@@ -1,0 +1,1303 @@
+package com.example.ui.components
+
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FiberManualRecord
+import androidx.compose.material.icons.filled.FlashOn
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Tv
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Whatshot
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import com.example.data.model.NewsProject
+import com.example.ui.theme.NewsAmber
+import com.example.ui.theme.NewsGold
+import com.example.ui.theme.NewsRedDark
+import com.example.ui.theme.NewsRedPrimary
+import kotlinx.coroutines.delay
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import kotlin.math.roundToInt
+
+import androidx.compose.ui.graphics.graphicsLayer
+
+@Composable
+fun NewsOverlayFrame(
+    project: NewsProject,
+    modifier: Modifier = Modifier,
+    isBreakingFlashActive: Boolean = false,
+    showTeleprompter: Boolean = false,
+    teleprompterSpeed: Float = 1.0f,
+    teleprompterFontSize: Float = 18f,
+    timelineProgress: Float = 0f,
+    onUpdateElementOffset: ((element: String, offsetX: Float, offsetY: Float) -> Unit)? = null,
+    backgroundContent: @Composable () -> Unit
+) {
+    // Current running time
+    var currentTimeString by remember { mutableStateOf("") }
+    LaunchedEffect(Unit) {
+        while (true) {
+            val sdf = SimpleDateFormat("hh:mm:ss a", Locale.getDefault())
+            currentTimeString = sdf.format(Date())
+            delay(1000)
+        }
+    }
+
+    // Live pulsing indicator
+    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 0.2f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(600, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulseAlpha"
+    )
+
+    // Parse primary theme color
+    val primaryColor = remember(project.themeColorHex) {
+        try {
+            Color(android.graphics.Color.parseColor(project.themeColorHex))
+        } catch (_: Exception) {
+            NewsRedPrimary
+        }
+    }
+
+    // Calculate aspect ratio
+    val aspectMultiplier = when (project.aspectPreset) {
+        "9:16" -> 9f / 16f
+        "1:1" -> 1f
+        "4:5" -> 4f / 5f
+        else -> 16f / 9f
+    }
+
+    // Live Pan & Zoom scale interpolated across timelineProgress
+    val livePanZoomScale = if (project.panZoomLocked) {
+        project.panZoomStartScale
+    } else {
+        project.panZoomStartScale + (project.panZoomEndScale - project.panZoomStartScale) * timelineProgress.coerceIn(0f, 1f)
+    }.coerceIn(1.0f, 2.5f)
+
+    Box(
+        modifier = modifier
+            .aspectRatio(aspectMultiplier, matchHeightConstraintsFirst = false)
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color.Black)
+            .testTag("news_overlay_frame"),
+        contentAlignment = Alignment.Center
+    ) {
+        // ================= BACKGROUND & LAYOUT MODE (FULL, SPLIT, PIP) =================
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    scaleX = livePanZoomScale
+                    scaleY = livePanZoomScale
+                }
+        ) {
+            when (project.layoutMode) {
+                "SPLIT_SCREEN" -> {
+                    Row(modifier = Modifier.fillMaxSize()) {
+                        Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                            backgroundContent()
+                        }
+                        Box(modifier = Modifier.width(2.dp).fillMaxHeight().background(NewsGold))
+                        Box(modifier = Modifier.weight(1f).fillMaxHeight().background(Color(0xFF1E293B))) {
+                            if (!project.secondaryMediaUri.isNullOrBlank()) {
+                                AsyncImage(
+                                    model = project.secondaryMediaUri,
+                                    contentDescription = "ग्राउंड फुटेज",
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop
+                                )
+                            } else {
+                                Box(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("ग्राउंड रिपोर्ट फुटेज", color = Color.Gray, fontSize = 11.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                else -> {
+                    // Fullscreen background
+                    backgroundContent()
+
+                    // Picture In Picture (PIP) floating box
+                    if (project.layoutMode == "PIP_CORNER") {
+                        Box(
+                            modifier = Modifier
+                                .padding(8.dp)
+                                .size(width = 110.dp, height = 75.dp)
+                                .align(Alignment.CenterEnd)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Color(0xFF0F172A))
+                                .border(1.5.dp, NewsGold, RoundedCornerShape(6.dp))
+                        ) {
+                            if (!project.secondaryMediaUri.isNullOrBlank()) {
+                                AsyncImage(
+                                    model = project.secondaryMediaUri,
+                                    contentDescription = "PIP मीडिया",
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop
+                                )
+                            } else {
+                                Box(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("PIP विंडो", color = Color.White, fontSize = 10.sp)
+                                }
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .background(NewsRedPrimary, RoundedCornerShape(bottomEnd = 4.dp))
+                                    .padding(horizontal = 4.dp, vertical = 1.dp)
+                                    .align(Alignment.TopStart)
+                            ) {
+                                Text("लाइव", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ================= COLOR FILTERS & VFX OVERLAY =================
+        VideoEffectsRenderer(
+            activeFilter = project.activeFilter,
+            activeVfx = project.activeVfx,
+            contrast = project.videoContrast,
+            brightness = project.videoBrightness,
+            modifier = Modifier.fillMaxSize()
+        )
+
+        // Chroma Key Preview Indicator when Green/Blue Screen is active
+        if (project.chromaKeyEnabled) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 6.dp)
+                    .background(Color(0xCC1B5E20), RoundedCornerShape(4.dp))
+                    .border(0.5.dp, Color.Green, RoundedCornerShape(4.dp))
+                    .padding(horizontal = 6.dp, vertical = 2.dp)
+            ) {
+                Text(
+                    text = "🟩 क्रोमा की सक्रिय (${(project.chromaKeySimilarity * 100).toInt()}%)",
+                    color = Color.White,
+                    fontSize = 8.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+
+        // Flash Breaking News strobe effect if triggered
+        if (isBreakingFlashActive) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Red.copy(alpha = 0.35f))
+            )
+        }
+
+        // ================= TOP BAR & LOGO OVERLAYS =================
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(6.dp)
+        ) {
+            val displayClockText = project.manualClockText.ifBlank { currentTimeString }
+            val displayLiveText = project.liveBadgeText.ifBlank { "LIVE" }
+
+            // Main Top Bar Row
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.TopCenter),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top
+            ) {
+                // Left Column: Top-Left Logo / Badges / Left-positioned LIVE or Clock
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    if (project.showLogo && project.logoPosition == "TOP_LEFT") {
+                        ChannelLogoOverlay(
+                            logoType = project.logoType,
+                            customLogoUri = project.customLogoUri,
+                            scale = project.logoScale,
+                            opacity = project.logoOpacity,
+                            logoAnimation = project.logoAnimation,
+                            channelName = project.channelName,
+                            location = project.location,
+                            modifier = Modifier
+                                .offset { IntOffset(project.logoOffsetX.roundToInt(), project.logoOffsetY.roundToInt()) }
+                                .pointerInput(Unit) {
+                                    detectDragGestures { change, dragAmount ->
+                                        change.consume()
+                                        onUpdateElementOffset?.invoke(
+                                            "LOGO",
+                                            project.logoOffsetX + dragAmount.x,
+                                            project.logoOffsetY + dragAmount.y
+                                        )
+                                    }
+                                }
+                        )
+                    }
+
+                    if (project.showLiveBadge && project.liveBadgePosition == "TOP_LEFT") {
+                        LiveBadgeChip(
+                            text = displayLiveText,
+                            pulseAlpha = pulseAlpha,
+                            scale = project.liveBadgeScale,
+                            offsetX = project.liveBadgeOffsetX,
+                            offsetY = project.liveBadgeOffsetY,
+                            onDrag = { dx, dy ->
+                                onUpdateElementOffset?.invoke(
+                                    "LIVE_BADGE",
+                                    project.liveBadgeOffsetX + dx,
+                                    project.liveBadgeOffsetY + dy
+                                )
+                            }
+                        )
+                    }
+
+                    if (project.showClock && project.clockPosition == "TOP_LEFT" && displayClockText.isNotEmpty()) {
+                        ClockBadgeChip(
+                            timeText = displayClockText,
+                            scale = project.clockScale,
+                            offsetX = project.clockOffsetX,
+                            offsetY = project.clockOffsetY,
+                            onDrag = { dx, dy ->
+                                onUpdateElementOffset?.invoke(
+                                    "CLOCK",
+                                    project.clockOffsetX + dx,
+                                    project.clockOffsetY + dy
+                                )
+                            }
+                        )
+                    }
+                }
+
+                // Right Column: Top-Right Logo (Default), Location, Right-positioned LIVE or Clock
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    if (project.showLiveBadge && project.liveBadgePosition == "TOP_RIGHT") {
+                        LiveBadgeChip(
+                            text = displayLiveText,
+                            pulseAlpha = pulseAlpha,
+                            scale = project.liveBadgeScale,
+                            offsetX = project.liveBadgeOffsetX,
+                            offsetY = project.liveBadgeOffsetY,
+                            onDrag = { dx, dy ->
+                                onUpdateElementOffset?.invoke(
+                                    "LIVE_BADGE",
+                                    project.liveBadgeOffsetX + dx,
+                                    project.liveBadgeOffsetY + dy
+                                )
+                            }
+                        )
+                    }
+
+                    if (project.showLogo && project.logoPosition == "TOP_RIGHT") {
+                        ChannelLogoOverlay(
+                            logoType = project.logoType,
+                            customLogoUri = project.customLogoUri,
+                            scale = project.logoScale,
+                            opacity = project.logoOpacity,
+                            logoAnimation = project.logoAnimation,
+                            channelName = project.channelName,
+                            location = project.location,
+                            modifier = Modifier
+                                .offset { IntOffset(project.logoOffsetX.roundToInt(), project.logoOffsetY.roundToInt()) }
+                                .pointerInput(Unit) {
+                                    detectDragGestures { change, dragAmount ->
+                                        change.consume()
+                                        onUpdateElementOffset?.invoke(
+                                            "LOGO",
+                                            project.logoOffsetX + dragAmount.x,
+                                            project.logoOffsetY + dragAmount.y
+                                        )
+                                    }
+                                }
+                        )
+                    }
+
+                    if (project.showLocation && project.location.isNotBlank()) {
+                        Box(
+                            modifier = Modifier
+                                .offset { IntOffset(project.locationOffsetX.roundToInt(), project.locationOffsetY.roundToInt()) }
+                                .pointerInput(Unit) {
+                                    detectDragGestures { change, dragAmount ->
+                                        change.consume()
+                                        onUpdateElementOffset?.invoke(
+                                            "LOCATION",
+                                            project.locationOffsetX + dragAmount.x,
+                                            project.locationOffsetY + dragAmount.y
+                                        )
+                                    }
+                                }
+                                .background(
+                                    Color(0xCC0F172A),
+                                    RoundedCornerShape(4.dp)
+                                )
+                                .border(0.5.dp, Color(0x66FFFFFF), RoundedCornerShape(4.dp))
+                                .padding(horizontal = 5.dp, vertical = 2.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.LocationOn,
+                                    contentDescription = "स्थान",
+                                    tint = NewsAmber,
+                                    modifier = Modifier.size(11.dp)
+                                )
+                                Text(
+                                    text = project.location,
+                                    color = Color.White,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 10.sp
+                                )
+                            }
+                        }
+                    }
+
+                    if (project.showClock && project.clockPosition == "TOP_RIGHT" && displayClockText.isNotEmpty()) {
+                        ClockBadgeChip(
+                            timeText = displayClockText,
+                            scale = project.clockScale,
+                            offsetX = project.clockOffsetX,
+                            offsetY = project.clockOffsetY,
+                            onDrag = { dx, dy ->
+                                onUpdateElementOffset?.invoke(
+                                    "CLOCK",
+                                    project.clockOffsetX + dx,
+                                    project.clockOffsetY + dy
+                                )
+                            }
+                        )
+                    }
+                }
+            }
+
+            // Bottom-Left / Bottom-Right Logo support
+            if (project.showLogo && project.logoPosition == "BOTTOM_LEFT") {
+                ChannelLogoOverlay(
+                    logoType = project.logoType,
+                    customLogoUri = project.customLogoUri,
+                    scale = project.logoScale,
+                    opacity = project.logoOpacity,
+                    logoAnimation = project.logoAnimation,
+                    channelName = project.channelName,
+                    location = project.location,
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(bottom = 80.dp, start = 4.dp)
+                        .offset { IntOffset(project.logoOffsetX.roundToInt(), project.logoOffsetY.roundToInt()) }
+                        .pointerInput(Unit) {
+                            detectDragGestures { change, dragAmount ->
+                                change.consume()
+                                onUpdateElementOffset?.invoke(
+                                    "LOGO",
+                                    project.logoOffsetX + dragAmount.x,
+                                    project.logoOffsetY + dragAmount.y
+                                )
+                            }
+                        }
+                )
+            } else if (project.showLogo && project.logoPosition == "BOTTOM_RIGHT") {
+                ChannelLogoOverlay(
+                    logoType = project.logoType,
+                    customLogoUri = project.customLogoUri,
+                    scale = project.logoScale,
+                    opacity = project.logoOpacity,
+                    logoAnimation = project.logoAnimation,
+                    channelName = project.channelName,
+                    location = project.location,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(bottom = 80.dp, end = 4.dp)
+                        .offset { IntOffset(project.logoOffsetX.roundToInt(), project.logoOffsetY.roundToInt()) }
+                        .pointerInput(Unit) {
+                            detectDragGestures { change, dragAmount ->
+                                change.consume()
+                                onUpdateElementOffset?.invoke(
+                                    "LOGO",
+                                    project.logoOffsetX + dragAmount.x,
+                                    project.logoOffsetY + dragAmount.y
+                                )
+                            }
+                        }
+                )
+            }
+
+            // ================= ACTIVE STICKERS ROW =================
+            if (project.showStickers) {
+                val activeStickerTags = project.activeStickers.split(",")
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.TopStart)
+                        .padding(top = 38.dp, start = 4.dp)
+                        .offset { IntOffset(project.stickersOffsetX.roundToInt(), project.stickersOffsetY.roundToInt()) }
+                        .pointerInput(Unit) {
+                            detectDragGestures { change, dragAmount ->
+                                change.consume()
+                                onUpdateElementOffset?.invoke(
+                                    "STICKERS",
+                                    project.stickersOffsetX + dragAmount.x,
+                                    project.stickersOffsetY + dragAmount.y
+                                )
+                            }
+                        },
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    if (activeStickerTags.contains("EXCLUSIVE")) {
+                        StickerBadge("विशेष ख़बर", NewsGold, Color.Black)
+                    }
+                    if (activeStickerTags.contains("BIG_BREAKING")) {
+                        StickerBadge("बड़ा खुलासा", NewsRedPrimary, Color.White)
+                    }
+                    if (activeStickerTags.contains("GROUND_ZERO")) {
+                        StickerBadge("ग्राउंड ज़ीरो", Color(0xFF0D47A1), Color.White)
+                    }
+                    if (activeStickerTags.contains("VIRAL")) {
+                        StickerBadge("वायरल वीडियो", Color(0xFFE65100), Color.White)
+                    }
+                    if (activeStickerTags.contains("WEATHER_ALERT")) {
+                        StickerBadge("मौसम अलर्ट", Color(0xFF00838F), Color.White)
+                    }
+                }
+            }
+
+            // ================= TELEPROMPTER OVERLAY =================
+            if (showTeleprompter && project.teleprompterText.isNotBlank()) {
+                TeleprompterView(
+                    text = project.teleprompterText,
+                    speed = teleprompterSpeed,
+                    fontSize = teleprompterFontSize,
+                    modifier = Modifier
+                        .fillMaxWidth(0.94f)
+                        .height(105.dp)
+                        .align(Alignment.Center)
+                )
+            }
+
+            // ================= BOTTOM OVERLAYS (Reporter Card, Headline, Ticker) =================
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.BottomCenter),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                // Reporter Lower Third
+                if (project.showReporterCard && project.reporterName.isNotBlank() && project.headlinePosition != "CENTER") {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .offset { IntOffset(project.reporterOffsetX.roundToInt(), project.reporterOffsetY.roundToInt()) }
+                            .graphicsLayer {
+                                scaleX = project.reporterScale.coerceIn(0.7f, 1.6f)
+                                scaleY = project.reporterScale.coerceIn(0.7f, 1.6f)
+                            }
+                            .pointerInput(Unit) {
+                                detectDragGestures { change, dragAmount ->
+                                    change.consume()
+                                    onUpdateElementOffset?.invoke(
+                                        "REPORTER",
+                                        project.reporterOffsetX + dragAmount.x,
+                                        project.reporterOffsetY + dragAmount.y
+                                    )
+                                }
+                            },
+                        contentAlignment = if (project.reporterPosition == "BOTTOM_RIGHT") Alignment.CenterEnd else Alignment.CenterStart
+                    ) {
+                        ReporterLowerThird(
+                            name = project.reporterName,
+                            role = project.reporterRole,
+                            location = project.location,
+                            primaryColor = primaryColor
+                        )
+                    }
+                }
+
+                // Main News Headline Card (when in BOTTOM position)
+                if (project.showHeadline && project.headline.isNotBlank() && project.headlinePosition == "BOTTOM") {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .offset { IntOffset(project.headlineOffsetX.roundToInt(), project.headlineOffsetY.roundToInt()) }
+                            .graphicsLayer {
+                                scaleX = project.headlineScale.coerceIn(0.7f, 1.6f)
+                                scaleY = project.headlineScale.coerceIn(0.7f, 1.6f)
+                            }
+                            .pointerInput(Unit) {
+                                detectDragGestures { change, dragAmount ->
+                                    change.consume()
+                                    onUpdateElementOffset?.invoke(
+                                        "HEADLINE",
+                                        project.headlineOffsetX + dragAmount.x,
+                                        project.headlineOffsetY + dragAmount.y
+                                    )
+                                }
+                            }
+                    ) {
+                        MainHeadlineCard(
+                            category = project.category,
+                            headline = project.headline,
+                            subHeadline = project.subHeadline,
+                            primaryColor = primaryColor,
+                            animationStyle = project.headlineAnimation
+                        )
+                    }
+                }
+
+                // Scrolling Ticker Tape (when in BOTTOM position)
+                if (project.showTicker && project.tickerText.isNotBlank() && project.tickerPosition == "BOTTOM") {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .offset { IntOffset(project.tickerOffsetX.roundToInt(), project.tickerOffsetY.roundToInt()) }
+                            .graphicsLayer {
+                                scaleX = project.tickerScale.coerceIn(0.7f, 1.6f)
+                                scaleY = project.tickerScale.coerceIn(0.7f, 1.6f)
+                            }
+                            .pointerInput(Unit) {
+                                detectDragGestures { change, dragAmount ->
+                                    change.consume()
+                                    onUpdateElementOffset?.invoke(
+                                        "TICKER",
+                                        project.tickerOffsetX + dragAmount.x,
+                                        project.tickerOffsetY + dragAmount.y
+                                    )
+                                }
+                            }
+                    ) {
+                        ScrollingTicker(
+                            tickerText = project.tickerText,
+                            tagText = project.tickerTagText,
+                            tickerSpeed = project.tickerSpeed,
+                            animationStyle = project.tickerAnimation,
+                            primaryColor = primaryColor
+                        )
+                    }
+                }
+            }
+
+            // Headline in CENTER position (Pop / Breaking Style)
+            if (project.showHeadline && project.headline.isNotBlank() && project.headlinePosition == "CENTER") {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(0.96f)
+                        .align(Alignment.Center)
+                        .offset { IntOffset(project.headlineOffsetX.roundToInt(), project.headlineOffsetY.roundToInt()) }
+                        .graphicsLayer {
+                            scaleX = project.headlineScale.coerceIn(0.7f, 1.6f)
+                            scaleY = project.headlineScale.coerceIn(0.7f, 1.6f)
+                        }
+                        .pointerInput(Unit) {
+                            detectDragGestures { change, dragAmount ->
+                                change.consume()
+                                onUpdateElementOffset?.invoke(
+                                    "HEADLINE",
+                                    project.headlineOffsetX + dragAmount.x,
+                                    project.headlineOffsetY + dragAmount.y
+                                )
+                            }
+                        }
+                ) {
+                    MainHeadlineCard(
+                        category = project.category,
+                        headline = project.headline,
+                        subHeadline = project.subHeadline,
+                        primaryColor = primaryColor,
+                        animationStyle = project.headlineAnimation
+                    )
+                }
+            }
+
+            // Headline in TOP position
+            if (project.showHeadline && project.headline.isNotBlank() && project.headlinePosition == "TOP") {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.TopCenter)
+                        .padding(top = 42.dp)
+                        .offset { IntOffset(project.headlineOffsetX.roundToInt(), project.headlineOffsetY.roundToInt()) }
+                        .graphicsLayer {
+                            scaleX = project.headlineScale.coerceIn(0.7f, 1.6f)
+                            scaleY = project.headlineScale.coerceIn(0.7f, 1.6f)
+                        }
+                        .pointerInput(Unit) {
+                            detectDragGestures { change, dragAmount ->
+                                change.consume()
+                                onUpdateElementOffset?.invoke(
+                                    "HEADLINE",
+                                    project.headlineOffsetX + dragAmount.x,
+                                    project.headlineOffsetY + dragAmount.y
+                                )
+                            }
+                        }
+                ) {
+                    MainHeadlineCard(
+                        category = project.category,
+                        headline = project.headline,
+                        subHeadline = project.subHeadline,
+                        primaryColor = primaryColor,
+                        animationStyle = project.headlineAnimation
+                    )
+                }
+            }
+
+            // Scrolling Ticker in TOP position
+            if (project.showTicker && project.tickerText.isNotBlank() && project.tickerPosition == "TOP") {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.TopCenter)
+                        .offset { IntOffset(project.tickerOffsetX.roundToInt(), project.tickerOffsetY.roundToInt()) }
+                        .graphicsLayer {
+                            scaleX = project.tickerScale.coerceIn(0.7f, 1.6f)
+                            scaleY = project.tickerScale.coerceIn(0.7f, 1.6f)
+                        }
+                        .pointerInput(Unit) {
+                            detectDragGestures { change, dragAmount ->
+                                change.consume()
+                                onUpdateElementOffset?.invoke(
+                                    "TICKER",
+                                    project.tickerOffsetX + dragAmount.x,
+                                    project.tickerOffsetY + dragAmount.y
+                                )
+                            }
+                        }
+                ) {
+                    ScrollingTicker(
+                        tickerText = project.tickerText,
+                        tagText = project.tickerTagText,
+                        tickerSpeed = project.tickerSpeed,
+                        animationStyle = project.tickerAnimation,
+                        primaryColor = primaryColor
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LiveBadgeChip(
+    text: String,
+    pulseAlpha: Float,
+    scale: Float,
+    offsetX: Float,
+    offsetY: Float,
+    onDrag: (Float, Float) -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .offset { IntOffset(offsetX.roundToInt(), offsetY.roundToInt()) }
+            .graphicsLayer {
+                scaleX = scale.coerceIn(0.7f, 1.6f)
+                scaleY = scale.coerceIn(0.7f, 1.6f)
+            }
+            .pointerInput(Unit) {
+                detectDragGestures { change, dragAmount ->
+                    change.consume()
+                    onDrag(dragAmount.x, dragAmount.y)
+                }
+            }
+            .background(
+                Color.Red.copy(alpha = pulseAlpha),
+                RoundedCornerShape(4.dp)
+            )
+            .padding(horizontal = 6.dp, vertical = 3.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(6.dp)
+                    .background(Color.White, CircleShape)
+            )
+            Text(
+                text = text,
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = 11.sp
+            )
+        }
+    }
+}
+
+@Composable
+private fun ClockBadgeChip(
+    timeText: String,
+    scale: Float,
+    offsetX: Float,
+    offsetY: Float,
+    onDrag: (Float, Float) -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .offset { IntOffset(offsetX.roundToInt(), offsetY.roundToInt()) }
+            .graphicsLayer {
+                scaleX = scale.coerceIn(0.7f, 1.6f)
+                scaleY = scale.coerceIn(0.7f, 1.6f)
+            }
+            .pointerInput(Unit) {
+                detectDragGestures { change, dragAmount ->
+                    change.consume()
+                    onDrag(dragAmount.x, dragAmount.y)
+                }
+            }
+            .background(Color(0xE6000000), RoundedCornerShape(4.dp))
+            .border(0.5.dp, NewsGold.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
+            .padding(horizontal = 5.dp, vertical = 2.dp)
+    ) {
+        Text(
+            text = timeText,
+            color = NewsGold,
+            fontWeight = FontWeight.Bold,
+            fontSize = 9.sp
+        )
+    }
+}
+
+@Composable
+private fun StickerBadge(text: String, bgColor: Color, textColor: Color) {
+    Box(
+        modifier = Modifier
+            .shadow(4.dp, RoundedCornerShape(4.dp))
+            .background(bgColor, RoundedCornerShape(4.dp))
+            .border(0.5.dp, Color.White, RoundedCornerShape(4.dp))
+            .padding(horizontal = 6.dp, vertical = 2.dp)
+    ) {
+        Text(
+            text = text,
+            color = textColor,
+            fontWeight = FontWeight.Black,
+            fontSize = 9.sp
+        )
+    }
+}
+
+@Composable
+private fun ReporterLowerThird(
+    name: String,
+    role: String,
+    location: String,
+    primaryColor: Color
+) {
+    Box(
+        modifier = Modifier
+            .padding(start = 2.dp, bottom = 2.dp)
+            .shadow(4.dp, RoundedCornerShape(topEnd = 6.dp, bottomEnd = 6.dp))
+            .background(
+                brush = Brush.horizontalGradient(
+                    listOf(
+                        Color(0xFF0F172A),
+                        Color(0xE61E293B),
+                        Color.Transparent
+                    )
+                ),
+                shape = RoundedCornerShape(topEnd = 6.dp, bottomEnd = 6.dp)
+            )
+            .border(
+                width = 1.dp,
+                brush = Brush.horizontalGradient(listOf(primaryColor, NewsGold, Color.Transparent)),
+                shape = RoundedCornerShape(topEnd = 6.dp, bottomEnd = 6.dp)
+            )
+            .padding(horizontal = 8.dp, vertical = 3.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(20.dp)
+                    .background(primaryColor, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Mic,
+                    contentDescription = "रिपोर्टर",
+                    tint = Color.White,
+                    modifier = Modifier.size(12.dp)
+                )
+            }
+
+            Column {
+                Text(
+                    text = name,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 11.sp,
+                    lineHeight = 13.sp
+                )
+                val subtitle = buildString {
+                    if (role.isNotBlank()) append(role)
+                    if (role.isNotBlank() && location.isNotBlank()) append(" • ")
+                    if (location.isNotBlank()) append(location)
+                }
+                if (subtitle.isNotEmpty()) {
+                    Text(
+                        text = subtitle,
+                        color = NewsGold,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 9.sp,
+                        lineHeight = 11.sp
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MainHeadlineCard(
+    category: String,
+    headline: String,
+    subHeadline: String,
+    primaryColor: Color,
+    animationStyle: String = "SHINE_SWEEP"
+) {
+    val transition = rememberInfiniteTransition(label = "headlineAnim")
+    val animPhase by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "headlinePhase"
+    )
+    val pulseFactor by transition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 700, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "headlinePulse"
+    )
+
+    val cardScale = if (animationStyle == "ZOOM_POP") 1f + (pulseFactor * 0.028f) else 1f
+    val borderBrush = when (animationStyle) {
+        "PULSE_GLOW" -> Brush.horizontalGradient(
+            listOf(NewsGold.copy(alpha = pulseFactor), primaryColor.copy(alpha = pulseFactor), NewsGold.copy(alpha = pulseFactor))
+        )
+        "NEON_FLASH" -> {
+            val flashColor = if (pulseFactor > 0.68f) Color.Cyan else NewsGold
+            Brush.horizontalGradient(listOf(flashColor, primaryColor, flashColor))
+        }
+        "SHINE_SWEEP" -> Brush.horizontalGradient(
+            listOf(primaryColor, NewsGold, Color.White.copy(alpha = 0.8f))
+        )
+        else -> Brush.horizontalGradient(listOf(primaryColor, Color(0x66FFFFFF)))
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .graphicsLayer {
+                scaleX = cardScale
+                scaleY = cardScale
+            }
+            .shadow(8.dp)
+    ) {
+        // Category Ribbon (ब्रेकिंग न्यूज़ / विशेष ख़बर)
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp))
+                .background(
+                    brush = Brush.horizontalGradient(
+                        listOf(primaryColor, NewsRedDark, Color(0xFF1E293B))
+                    )
+                )
+                .border(
+                    width = 0.7.dp,
+                    color = if (animationStyle == "NEON_FLASH" && pulseFactor > 0.7f) Color.Cyan else NewsGold,
+                    shape = RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp)
+                )
+        ) {
+            if (animationStyle == "SHINE_SWEEP" || animationStyle == "SLIDE_REVEAL") {
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .background(
+                            Brush.horizontalGradient(
+                                colorStops = arrayOf(
+                                    (animPhase - 0.25f).coerceIn(0f, 1f) to Color.Transparent,
+                                    animPhase.coerceIn(0f, 1f) to Color.White.copy(alpha = 0.42f),
+                                    (animPhase + 0.25f).coerceIn(0f, 1f) to Color.Transparent
+                                )
+                            )
+                        )
+                )
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .background(
+                            if (animationStyle != "NONE") NewsGold.copy(alpha = pulseFactor) else NewsGold,
+                            CircleShape
+                        )
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = category.ifBlank { "ब्रेकिंग न्यूज़" }.uppercase(),
+                    color = NewsGold,
+                    fontWeight = FontWeight.Black,
+                    fontSize = 10.sp,
+                    letterSpacing = 0.5.sp
+                )
+            }
+        }
+
+        // Headline Main Banner Box
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    brush = Brush.verticalGradient(
+                        listOf(Color(0xF00A0E1A), Color(0xF8151D2F))
+                    )
+                )
+                .border(
+                    width = if (animationStyle == "PULSE_GLOW" || animationStyle == "NEON_FLASH") 1.5.dp else 1.dp,
+                    brush = borderBrush,
+                    shape = RoundedCornerShape(bottomStart = 4.dp, bottomEnd = 4.dp)
+                )
+        ) {
+            // Animated Shine Sweep or Slide Reveal Highlight inside Banner
+            if (animationStyle == "SHINE_SWEEP") {
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .background(
+                            Brush.horizontalGradient(
+                                colorStops = arrayOf(
+                                    (animPhase - 0.18f).coerceIn(0f, 1f) to Color.Transparent,
+                                    animPhase.coerceIn(0f, 1f) to NewsGold.copy(alpha = 0.24f),
+                                    (animPhase + 0.18f).coerceIn(0f, 1f) to Color.Transparent
+                                )
+                            )
+                        )
+                )
+            } else if (animationStyle == "SLIDE_REVEAL") {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(animPhase.coerceIn(0.08f, 1f))
+                        .height(2.5.dp)
+                        .align(Alignment.BottomStart)
+                        .background(Brush.horizontalGradient(listOf(primaryColor, NewsGold, Color.White)))
+                )
+            }
+
+            Column(
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(1.dp)
+            ) {
+                Text(
+                    text = headline,
+                    color = Color.White,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 13.sp,
+                    lineHeight = 17.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (subHeadline.isNotBlank()) {
+                    Text(
+                        text = subHeadline,
+                        color = NewsAmber,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 10.sp,
+                        lineHeight = 13.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ScrollingTicker(
+    tickerText: String,
+    tagText: String = "⚡ ताज़ा अपडेट",
+    tickerSpeed: Float = 1.0f,
+    animationStyle: String = "BREAKING_SWEEP",
+    primaryColor: Color
+) {
+    val transition = rememberInfiniteTransition(label = "tickerAnim")
+    val animPhase by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1600, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "tickerShinePhase"
+    )
+    val pulseFactor by transition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 550, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "tickerPulse"
+    )
+
+    val effectiveTag = tagText.ifBlank { "⚡ ताज़ा अपडेट" }
+
+    Column(
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        // "ताज़ा अपडेट" Tag placed directly ABOVE the running ticker line
+        Box(
+            modifier = Modifier
+                .padding(start = 2.dp)
+                .shadow(4.dp, RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp))
+                .clip(RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp))
+                .background(
+                    brush = if (animationStyle == "FLASH_TAG" && pulseFactor > 0.7f) {
+                        Brush.horizontalGradient(listOf(primaryColor, Color.Red, NewsGold))
+                    } else {
+                        Brush.horizontalGradient(listOf(NewsGold, Color(0xFFFF9100), primaryColor))
+                    }
+                )
+                .border(
+                    width = 0.6.dp,
+                    color = Color.White.copy(alpha = 0.9f),
+                    shape = RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp)
+                )
+        ) {
+            if (animationStyle == "BREAKING_SWEEP" || animationStyle == "WAVE_GLOW") {
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .background(
+                            Brush.horizontalGradient(
+                                colorStops = arrayOf(
+                                    (animPhase - 0.25f).coerceIn(0f, 1f) to Color.Transparent,
+                                    animPhase.coerceIn(0f, 1f) to Color.White.copy(alpha = 0.45f),
+                                    (animPhase + 0.25f).coerceIn(0f, 1f) to Color.Transparent
+                                )
+                            )
+                        )
+                )
+            }
+            Row(
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .background(
+                            if (animationStyle != "NONE") Color.Red.copy(alpha = pulseFactor) else Color.Red,
+                            CircleShape
+                        )
+                )
+                Text(
+                    text = effectiveTag,
+                    color = if (animationStyle == "FLASH_TAG" && pulseFactor > 0.7f) Color.White else Color.Black,
+                    fontWeight = FontWeight.Black,
+                    fontSize = 10.sp,
+                    letterSpacing = 0.5.sp
+                )
+            }
+        }
+
+        // Full Width Running Ticker Line (चलने वाली लाइन)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(24.dp)
+                .background(
+                    if (animationStyle == "WAVE_GLOW") {
+                        Brush.horizontalGradient(
+                            colorStops = arrayOf(
+                                0f to Color(0xF00A0E1A),
+                                animPhase.coerceIn(0.05f, 0.95f) to primaryColor.copy(alpha = 0.55f),
+                                1f to Color(0xF00A0E1A)
+                            )
+                        )
+                    } else {
+                        Brush.horizontalGradient(listOf(Color(0xF00A0E1A), Color(0xF5111A2E)))
+                    }
+                )
+                .border(
+                    width = if (animationStyle == "PULSE_BORDER") 1.3.dp else 0.8.dp,
+                    color = if (animationStyle == "PULSE_BORDER") {
+                        NewsGold.copy(alpha = pulseFactor)
+                    } else {
+                        NewsGold.copy(alpha = 0.8f)
+                    }
+                )
+        ) {
+            if (animationStyle == "BREAKING_SWEEP") {
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .background(
+                            Brush.horizontalGradient(
+                                colorStops = arrayOf(
+                                    (animPhase - 0.15f).coerceIn(0f, 1f) to Color.Transparent,
+                                    animPhase.coerceIn(0f, 1f) to NewsGold.copy(alpha = 0.22f),
+                                    (animPhase + 0.15f).coerceIn(0f, 1f) to Color.Transparent
+                                )
+                            )
+                        )
+                )
+            }
+
+            BoxWithConstraints(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 4.dp),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                val containerWidthPx = constraints.maxWidth.toFloat()
+                val scrollDurationMs = (14000f / tickerSpeed.coerceIn(0.4f, 2.5f)).toInt().coerceAtLeast(2500)
+                val scrollOffset by transition.animateFloat(
+                    initialValue = containerWidthPx,
+                    targetValue = -containerWidthPx * 1.5f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(durationMillis = scrollDurationMs, easing = LinearEasing),
+                        repeatMode = RepeatMode.Restart
+                    ),
+                    label = "tickerOffset"
+                )
+
+                Text(
+                    text = "$tickerText        ★        $tickerText",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    softWrap = false,
+                    modifier = Modifier.offset { IntOffset(scrollOffset.roundToInt(), 0) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TeleprompterView(
+    text: String,
+    speed: Float,
+    fontSize: Float,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .background(Color(0xB3000000), RoundedCornerShape(8.dp))
+            .border(1.dp, NewsGold.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+            .padding(8.dp)
+    ) {
+        val transition = rememberInfiniteTransition(label = "teleprompterScroll")
+        val scrollDuration = (25000 / speed.coerceIn(0.5f, 3.0f)).toInt()
+        val scrollY by transition.animateFloat(
+            initialValue = 120f,
+            targetValue = -350f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = scrollDuration, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart
+            ),
+            label = "teleprompterY"
+        )
+
+        Text(
+            text = text,
+            color = Color(0xFFFFFF8D),
+            fontSize = fontSize.sp,
+            lineHeight = (fontSize * 1.4).sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier
+                .fillMaxWidth()
+                .offset { IntOffset(0, scrollY.roundToInt()) }
+        )
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(1.5.dp)
+                .background(Color.Red.copy(alpha = 0.5f))
+                .align(Alignment.Center)
+        )
+    }
+}

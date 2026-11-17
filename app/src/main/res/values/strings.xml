@@ -1,0 +1,15 @@
+<resources>
+    <string name="app_name">HK NEWS</string>
+    <string name="app_tagline">हिंदी न्यूज़ वीडियो एडिटर व स्टूडियो</string>
+    <string name="breaking_news">ब्रेकिंग न्यूज़</string>
+    <string name="live">LIVE</string>
+    <string name="exclusive">विशेष ख़बर</string>
+    <string name="ground_report">ग्राउंड रिपोर्ट</string>
+    <string name="top_headlines">मुख्य समाचार</string>
+    <string name="superfast">सुपरफास्ट 100</string>
+    <string name="ticker_placeholder">यहाँ अपनी ताज़ा ख़बर लिखें... देश भर की तमाम बड़ी ख़बरें सबसे पहले...</string>
+    <string name="reporter_default">राजेश शर्मा</string>
+    <string name="designation_default">विशेष संवाददाता</string>
+    <string name="location_default">नई दिल्ली</string>
+    <string name="channel_default">भारत 24</string>
+</resources>

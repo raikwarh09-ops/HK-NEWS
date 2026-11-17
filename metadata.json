@@ -1,0 +1,8 @@
+{
+  "name": "HK NEWS",
+  "description": "Hindi news video editing & broadcast app with breaking news graphics, customizable scrolling tickers, TV lower thirds, teleprompter, and live video creator.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
