@@ -9,6 +9,7 @@ import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Shader
+import android.media.MediaMetadataRetriever
 import android.media.MediaScannerConnection
 import android.net.Uri
 import android.os.Build
@@ -35,61 +36,163 @@ object GalleryMediaSaver {
         sourceUri: Uri,
         projectTitle: String = "HK_News"
     ): Uri? = withContext(Dispatchers.IO) {
-        val resolver = context.contentResolver
-        val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-        val fileName = "HK_NEWS_${timeStamp}.mp4"
-
-        val values = ContentValues().apply {
-            put(MediaStore.Video.Media.DISPLAY_NAME, fileName)
-            put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
-            put(MediaStore.Video.Media.TITLE, projectTitle)
-            put(MediaStore.Video.Media.DATE_ADDED, System.currentTimeMillis() / 1000)
-            put(MediaStore.Video.Media.DATE_MODIFIED, System.currentTimeMillis() / 1000)
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                put(MediaStore.Video.Media.RELATIVE_PATH, "${Environment.DIRECTORY_MOVIES}/HkNewsStudio")
-                put(MediaStore.Video.Media.IS_PENDING, 1)
-            }
-        }
-
-        val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
-        } else {
-            MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-        }
-
-        var targetUri: Uri? = null
+        val tempFile = File(context.cacheDir, "hk_copy_${System.currentTimeMillis()}.mp4")
         try {
-            targetUri = resolver.insert(collection, values)
-            if (targetUri != null) {
-                resolver.openOutputStream(targetUri)?.use { outStream ->
-                    resolver.openInputStream(sourceUri)?.use { inStream ->
-                        inStream.copyTo(outStream)
-                    }
-                }
+            val copied = copyUriToFile(context, sourceUri, tempFile)
+            if (!copied || !tempFile.exists() || tempFile.length() == 0L) {
+                tempFile.delete()
+                return@withContext null
+            }
+            val savedUri = saveLocalFileToVideoGallery(context, tempFile, projectTitle)
+            tempFile.delete()
+            return@withContext savedUri
+        } catch (e: Exception) {
+            e.printStackTrace()
+            tempFile.delete()
+            return@withContext null
+        }
+    }
 
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    values.clear()
-                    values.put(MediaStore.Video.Media.IS_PENDING, 0)
-                    resolver.update(targetUri, values, null, null)
+    private fun copyUriToFile(context: Context, uri: Uri, destFile: File): Boolean {
+        return try {
+            val inStream: InputStream? = if (uri.scheme == "file" && !uri.path.isNullOrBlank()) {
+                File(uri.path!!).inputStream()
+            } else {
+                context.contentResolver.openInputStream(uri)
+            }
+            if (inStream == null) return false
+            inStream.use { input ->
+                FileOutputStream(destFile).use { output ->
+                    val bytes = input.copyTo(output)
+                    output.flush()
+                    bytes > 0
                 }
-
-                MediaScannerConnection.scanFile(
-                    context,
-                    arrayOf(targetUri.path ?: ""),
-                    arrayOf("video/mp4"),
-                    null
-                )
             }
         } catch (e: Exception) {
             e.printStackTrace()
-            if (targetUri != null) {
-                resolver.delete(targetUri, null, null)
-                targetUri = null
-            }
+            false
+        }
+    }
+
+    fun saveLocalFileToVideoGallery(
+        context: Context,
+        sourceFile: File,
+        title: String = "HK_News"
+    ): Uri? {
+        if (!sourceFile.exists() || sourceFile.length() <= 0L) return null
+        val resolver = context.contentResolver
+        val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+        val fileName = "HK_NEWS_VIDEO_${timeStamp}.mp4"
+
+        val fileSize = sourceFile.length()
+        val videoDurationMs = try {
+            val mmr = MediaMetadataRetriever()
+            mmr.setDataSource(sourceFile.absolutePath)
+            val d = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+            mmr.release()
+            d
+        } catch (_: Exception) {
+            0L
         }
 
-        targetUri
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val relativePaths = listOf(
+                "${Environment.DIRECTORY_MOVIES}/HkNewsStudio",
+                Environment.DIRECTORY_MOVIES
+            )
+            for (relPath in relativePaths) {
+                val values = ContentValues().apply {
+                    put(MediaStore.Video.Media.DISPLAY_NAME, fileName)
+                    put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+                    put(MediaStore.Video.Media.TITLE, title.ifBlank { "HK News Video" })
+                    put(MediaStore.Video.Media.DATE_ADDED, System.currentTimeMillis() / 1000)
+                    put(MediaStore.Video.Media.DATE_MODIFIED, System.currentTimeMillis() / 1000)
+                    put(MediaStore.Video.Media.SIZE, fileSize)
+                    if (videoDurationMs > 0L) {
+                        put(MediaStore.Video.Media.DURATION, videoDurationMs)
+                    }
+                    put(MediaStore.Video.Media.RELATIVE_PATH, relPath)
+                    put(MediaStore.Video.Media.IS_PENDING, 1)
+                }
+
+                val collections = listOf(
+                    MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY),
+                    MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+                )
+                for (collection in collections) {
+                    var targetUri: Uri? = null
+                    try {
+                        targetUri = resolver.insert(collection, values)
+                        if (targetUri != null) {
+                            var bytesCopied = 0L
+                            resolver.openOutputStream(targetUri)?.use { outStream ->
+                                sourceFile.inputStream().use { inStream ->
+                                    bytesCopied = inStream.copyTo(outStream)
+                                }
+                                outStream.flush()
+                            }
+                            if (bytesCopied > 0L) {
+                                val doneValues = ContentValues().apply {
+                                    put(MediaStore.Video.Media.IS_PENDING, 0)
+                                    put(MediaStore.Video.Media.SIZE, bytesCopied)
+                                }
+                                resolver.update(targetUri, doneValues, null, null)
+                                scanInsertedMediaUri(context, targetUri)
+                                return targetUri
+                            } else {
+                                resolver.delete(targetUri, null, null)
+                            }
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        if (targetUri != null) {
+                            try {
+                                resolver.delete(targetUri, null, null)
+                            } catch (_: Exception) {}
+                        }
+                    }
+                }
+            }
+            return null
+        } else {
+            // Android 9 (API 28) and below
+            return try {
+                @Suppress("DEPRECATION")
+                val moviesDir = File(
+                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES),
+                    "HkNewsStudio"
+                )
+                if (!moviesDir.exists()) moviesDir.mkdirs()
+                val destFile = File(moviesDir, fileName)
+                sourceFile.inputStream().use { input ->
+                    FileOutputStream(destFile).use { output ->
+                        input.copyTo(output)
+                        output.flush()
+                    }
+                }
+                val values = ContentValues().apply {
+                    put(MediaStore.Video.Media.DISPLAY_NAME, fileName)
+                    put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+                    put(MediaStore.Video.Media.TITLE, title.ifBlank { "HK News Video" })
+                    put(MediaStore.Video.Media.DATE_ADDED, System.currentTimeMillis() / 1000)
+                    put(MediaStore.Video.Media.DATE_MODIFIED, System.currentTimeMillis() / 1000)
+                    put(MediaStore.Video.Media.SIZE, destFile.length())
+                    @Suppress("DEPRECATION")
+                    put(MediaStore.Video.Media.DATA, destFile.absolutePath)
+                }
+                val inserted = resolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values)
+                MediaScannerConnection.scanFile(
+                    context,
+                    arrayOf(destFile.absolutePath),
+                    arrayOf("video/mp4"),
+                    null
+                )
+                inserted ?: Uri.fromFile(destFile)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                null
+            }
+        }
     }
 
     /**
@@ -261,41 +364,107 @@ object GalleryMediaSaver {
             }
         }
 
-        val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val collection = MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+            var uri: Uri? = null
+            try {
+                uri = resolver.insert(collection, values)
+                if (uri != null) {
+                    var ok = false
+                    resolver.openOutputStream(uri)?.use { out ->
+                        ok = bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                        out.flush()
+                    }
+                    if (ok) {
+                        val doneValues = ContentValues().apply {
+                            put(MediaStore.Images.Media.IS_PENDING, 0)
+                        }
+                        resolver.update(uri, doneValues, null, null)
+                        return uri
+                    } else {
+                        resolver.delete(uri, null, null)
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                if (uri != null) {
+                    try { resolver.delete(uri, null, null) } catch (_: Exception) {}
+                }
+            }
+            return null
         } else {
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI
-        }
-
-        var uri: Uri? = null
-        try {
-            uri = resolver.insert(collection, values)
-            if (uri != null) {
-                resolver.openOutputStream(uri)?.use { out ->
+            return try {
+                @Suppress("DEPRECATION")
+                val picsDir = File(
+                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
+                    "HkNewsStudio"
+                )
+                if (!picsDir.exists()) picsDir.mkdirs()
+                val destFile = File(picsDir, fileName)
+                FileOutputStream(destFile).use { out ->
                     bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                    out.flush()
                 }
-
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    values.clear()
-                    values.put(MediaStore.Images.Media.IS_PENDING, 0)
-                    resolver.update(uri, values, null, null)
-                }
-
+                @Suppress("DEPRECATION")
+                values.put(MediaStore.Images.Media.DATA, destFile.absolutePath)
+                val inserted = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
                 MediaScannerConnection.scanFile(
                     context,
-                    arrayOf(uri.path ?: ""),
+                    arrayOf(destFile.absolutePath),
                     arrayOf("image/png"),
                     null
                 )
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            if (uri != null) {
-                resolver.delete(uri, null, null)
-                uri = null
+                inserted ?: Uri.fromFile(destFile)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                null
             }
         }
-        return uri
+    }
+
+    @Suppress("DEPRECATION")
+    private fun scanInsertedMediaUri(context: Context, uri: Uri) {
+        try {
+            context.contentResolver.query(
+                uri,
+                arrayOf(MediaStore.Video.Media.DATA),
+                null,
+                null,
+                null
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val idx = cursor.getColumnIndex(MediaStore.Video.Media.DATA)
+                    if (idx >= 0) {
+                        val realPath = cursor.getString(idx)
+                        if (!realPath.isNullOrBlank()) {
+                            MediaScannerConnection.scanFile(
+                                context,
+                                arrayOf(realPath),
+                                arrayOf("video/mp4"),
+                                null
+                            )
+                        }
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+    }
+
+    fun openInGallery(context: Context, uri: Uri, mimeType: String? = null) {
+        try {
+            val resolvedType = mimeType
+                ?: context.contentResolver.getType(uri)
+                ?: if (uri.toString().contains("video", ignoreCase = true) || uri.toString().endsWith(".mp4", ignoreCase = true)) "video/mp4" else "image/png"
+            val viewIntent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, resolvedType)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(viewIntent)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            shareMedia(context, uri, mimeType)
+        }
     }
 
     fun shareMedia(context: Context, uri: Uri, mimeType: String? = null) {

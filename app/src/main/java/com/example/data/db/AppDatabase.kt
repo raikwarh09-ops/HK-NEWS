@@ -6,7 +6,7 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import com.example.data.model.NewsProject
 
-@Database(entities = [NewsProject::class], version = 9, exportSchema = false)
+@Database(entities = [NewsProject::class], version = 11, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun newsProjectDao(): NewsProjectDao
 

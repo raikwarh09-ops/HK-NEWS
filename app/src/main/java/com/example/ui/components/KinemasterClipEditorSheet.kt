@@ -446,26 +446,70 @@ fun KinemasterClipEditorSheet(
 
                     // TAB 4: VOICE CHANGER (आवाज़ बदलें)
                     4 -> {
+                        val ctx = androidx.compose.ui.platform.LocalContext.current
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(
-                                text = "काइनमास्टर वॉइस चेंजर (Voice Changer)",
+                                text = "🤖 ChatGPT AI वॉइस इफ़ेक्ट्स (ChatGPT Voice Modes)",
+                                color = Color(0xFF00E5FF),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp
+                            )
+
+                            val chatGptVoices = listOf(
+                                "CHATGPT_COVE" to "💬 ChatGPT Cove (गहरी शांत)",
+                                "CHATGPT_BREEZE" to "🌬️ ChatGPT Breeze (फ्रेंडली)",
+                                "CHATGPT_EMBER" to "🔥 ChatGPT Ember (दमदार एंकर)",
+                                "CHATGPT_JUNIPER" to "🎙️ ChatGPT Juniper (क्लियर AI)",
+                                "CHATGPT_SKY" to "✨ ChatGPT Sky (स्मूद असिस्टेंट)",
+                                "CHATGPT_SOL" to "☀️ ChatGPT Sol (न्यूज़ प्रो)"
+                            )
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                chatGptVoices.forEach { (id, label) ->
+                                    val selected = project.voiceChangerEffect == id
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(if (selected) Color(0xFF00E5FF) else Color(0xFF12233B))
+                                            .border(0.8.dp, if (selected) Color.White else Color(0x6600E5FF), RoundedCornerShape(6.dp))
+                                            .clickable {
+                                                onUpdateVoiceChanger(id)
+                                                com.example.audio.NewsAudioEffects.playVoiceEffectPreview(
+                                                    id,
+                                                    com.example.audio.NewsAudioEffects.resolveDefaultPitch(id)
+                                                )
+                                            }
+                                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                                    ) {
+                                        Text(
+                                            text = label,
+                                            color = if (selected) Color.Black else Color.White,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+
+                            Text(
+                                text = "काइनमास्टर स्टूडियो वॉइस इफ़ेक्ट्स व पिच:",
                                 color = Color.White,
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp
-                            )
-                            Text(
-                                text = "एंकर और रिपोर्टर की आवाज़ को पेशेवर न्यूज़ अंदाज़ में बदलें:",
-                                color = Color.Gray,
-                                fontSize = 11.sp
+                                fontSize = 12.sp
                             )
 
                             val voices = listOf(
                                 "NORMAL" to "सामान्य (Original)",
-                                "DEEP_ANCHOR" to "🎙️ टीवी प्राइम एंकर (Deep Male)",
-                                "RADIO_MIC" to "📻 वायरलेस रिपोर्टर माइक",
-                                "ECHO_STUDIO" to "🏛️ लाइव न्यूज़ रूम इको",
-                                "CHIPMUNK" to "🐿️ तेज़ हाई पिच (Chipmunk)",
-                                "ROBOT" to "🤖 साइबर AI न्यूज़कास्टर"
+                                "DEEP_ANCHOR" to "🎙️ गहरी एंकर आवाज़",
+                                "FEMALE_ANCHOR" to "👩 महिला एंकर",
+                                "RADIO_MIC" to "📻 वायरलेस माइक",
+                                "ECHO_STUDIO" to "🏛️ लाइव स्टूडियो इको",
+                                "CHIPMUNK" to "🐿️ तेज़ हाई पिच",
+                                "ROBOT" to "🤖 AI रोबोट",
+                                "MEGAPHONE" to "📢 लाउडस्पीकर",
+                                "SLOW_CINEMA" to "🎬 भारी सिनेमा आवाज़"
                             )
 
                             FlowRow(
@@ -479,18 +523,60 @@ fun KinemasterClipEditorSheet(
                                             .clip(RoundedCornerShape(6.dp))
                                             .background(if (selected) NewsGold else Color(0xFF1E293B))
                                             .border(0.5.dp, if (selected) NewsAmber else Color(0x33FFFFFF), RoundedCornerShape(6.dp))
-                                            .clickable { onUpdateVoiceChanger(id) }
-                                            .padding(horizontal = 10.dp, vertical = 8.dp)
+                                            .clickable {
+                                                onUpdateVoiceChanger(id)
+                                                com.example.audio.NewsAudioEffects.playVoiceEffectPreview(
+                                                    id,
+                                                    com.example.audio.NewsAudioEffects.resolveDefaultPitch(id)
+                                                )
+                                            }
+                                            .padding(horizontal = 8.dp, vertical = 6.dp)
                                     ) {
                                         Text(
                                             text = label,
                                             color = if (selected) Color.Black else Color.White,
-                                            fontSize = 11.sp,
+                                            fontSize = 10.sp,
                                             fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
                                         )
                                     }
                                 }
                             }
+
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("पिच (Pitch): ${(project.audioPitch * 100).roundToInt()}%", color = NewsAmber, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    Text(
+                                        text = "🗣️ हेडलाइन बोलें",
+                                        color = NewsGold,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.clickable {
+                                            com.example.audio.NewsAudioEffects.speakTextWithVoiceEffect(
+                                                ctx,
+                                                project.headline,
+                                                project.voiceChangerEffect,
+                                                project.audioPitch
+                                            )
+                                        }
+                                    )
+                                    Text(
+                                        text = "🔊 टेस्ट सुनें",
+                                        color = Color.Cyan,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.clickable {
+                                            com.example.audio.NewsAudioEffects.playVoiceEffectPreview(project.voiceChangerEffect, project.audioPitch)
+                                        }
+                                    )
+                                }
+                            }
+                            Slider(
+                                value = project.audioPitch,
+                                onValueChange = { onUpdateAudioMixer(project.audioVolumeBoost, it, project.audioAutoDucking) },
+                                valueRange = 0.5f..1.8f,
+                                colors = SliderDefaults.colors(thumbColor = NewsGold, activeTrackColor = NewsRedPrimary),
+                                modifier = Modifier.height(24.dp)
+                            )
                         }
                     }
 

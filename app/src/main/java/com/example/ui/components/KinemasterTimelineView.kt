@@ -74,6 +74,7 @@ fun KinemasterTimelineView(
     totalDurationMs: Long,
     selectedTrack: String, // "MAIN_VIDEO", "LAYER_OVERLAY", "AUDIO", "HANDWRITING"
     isTimelineExpanded: Boolean = false,
+    splitPointRatio: Float? = null,
     onSelectTrack: (String) -> Unit,
     onSeekTo: (Long) -> Unit,
     onTrimLeft: () -> Unit,
@@ -101,11 +102,22 @@ fun KinemasterTimelineView(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Timestamp: 00:03.45 / 00:10.00
+            // Timestamp: supports HH:MM:SS for long videos (up to 2 hours)
             val curSec = currentPositionMs / 1000
             val curMs = (currentPositionMs % 1000) / 10
             val totSec = durationSafe / 1000
             val totMs = (durationSafe % 1000) / 10
+            val timeLabel = if (totSec >= 3600L || curSec >= 3600L) {
+                "%02d:%02d:%02d / %02d:%02d:%02d".format(
+                    curSec / 3600, (curSec % 3600) / 60, curSec % 60,
+                    totSec / 3600, (totSec % 3600) / 60, totSec % 60
+                )
+            } else {
+                "%02d:%02d.%02d / %02d:%02d.%02d".format(
+                    curSec / 60, curSec % 60, curMs,
+                    totSec / 60, totSec % 60, totMs
+                )
+            }
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -116,10 +128,7 @@ fun KinemasterTimelineView(
                         .background(Color.Red, CircleShape)
                 )
                 Text(
-                    text = "%02d:%02d.%02d / %02d:%02d.%02d".format(
-                        curSec / 60, curSec % 60, curMs,
-                        totSec / 60, totSec % 60, totMs
-                    ),
+                    text = timeLabel,
                     color = NewsGold,
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.Bold,
@@ -217,6 +226,18 @@ fun KinemasterTimelineView(
                                 strokeWidth = 1f
                             )
                         }
+                        if (project.vnBeatMarkersEnabled) {
+                            val beats = 16
+                            val beatStep = size.width / beats
+                            for (b in 1 until beats) {
+                                val bx = b * beatStep
+                                drawCircle(
+                                    color = Color(0xFF00E5FF),
+                                    radius = 3.dp.toPx(),
+                                    center = Offset(bx, 4.dp.toPx())
+                                )
+                            }
+                        }
                     }
 
                     Row(
@@ -226,12 +247,15 @@ fun KinemasterTimelineView(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("00:00", color = Color.LightGray, fontSize = 8.sp, fontFamily = FontFamily.Monospace)
-                        Text("00:02", color = Color.LightGray, fontSize = 8.sp, fontFamily = FontFamily.Monospace)
-                        Text("00:04", color = Color.LightGray, fontSize = 8.sp, fontFamily = FontFamily.Monospace)
-                        Text("00:06", color = Color.LightGray, fontSize = 8.sp, fontFamily = FontFamily.Monospace)
-                        Text("00:08", color = Color.LightGray, fontSize = 8.sp, fontFamily = FontFamily.Monospace)
-                        Text("00:10", color = Color.LightGray, fontSize = 8.sp, fontFamily = FontFamily.Monospace)
+                        for (i in 0..5) {
+                            val tSec = ((durationSafe * i) / 5L) / 1000L
+                            val tickText = if (durationSafe >= 3600_000L) {
+                                "%02d:%02d:%02d".format(tSec / 3600, (tSec % 3600) / 60, tSec % 60)
+                            } else {
+                                "%02d:%02d".format(tSec / 60, tSec % 60)
+                            }
+                            Text(tickText, color = Color.LightGray, fontSize = 8.sp, fontFamily = FontFamily.Monospace)
+                        }
                     }
                 }
 
@@ -387,6 +411,33 @@ fun KinemasterTimelineView(
                             fontWeight = FontWeight.Bold,
                             fontSize = 10.sp
                         )
+                    }
+                }
+            }
+
+            // ================= SPLIT CUT / TRANSITION MARKER =================
+            if (splitPointRatio != null) {
+                val splitX = (totalWidthPx * splitPointRatio.coerceIn(0.02f, 0.98f)).coerceIn(0f, totalWidthPx)
+                Box(
+                    modifier = Modifier
+                        .offset { IntOffset(splitX.roundToInt() - 8, 20) }
+                        .fillMaxHeight()
+                        .width(16.dp),
+                    contentAlignment = Alignment.TopCenter
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(2.dp)
+                            .fillMaxHeight()
+                            .background(Color(0xFF00E5FF))
+                    )
+                    Box(
+                        modifier = Modifier
+                            .background(Color(0xFF006064), RoundedCornerShape(3.dp))
+                            .border(0.8.dp, NewsGold, RoundedCornerShape(3.dp))
+                            .padding(horizontal = 3.dp, vertical = 1.dp)
+                    ) {
+                        Text("✂", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Black)
                     }
                 }
             }

@@ -71,7 +71,10 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import kotlin.math.roundToInt
 
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
+
+import androidx.compose.runtime.rememberUpdatedState
 
 @Composable
 fun NewsOverlayFrame(
@@ -82,9 +85,35 @@ fun NewsOverlayFrame(
     teleprompterSpeed: Float = 1.0f,
     teleprompterFontSize: Float = 18f,
     timelineProgress: Float = 0f,
+    splitPointRatio: Float? = null,
+    hasNativeColorMatrixApplied: Boolean = false,
+    onDragElementDelta: ((element: String, dx: Float, dy: Float) -> Unit)? = null,
     onUpdateElementOffset: ((element: String, offsetX: Float, offsetY: Float) -> Unit)? = null,
     backgroundContent: @Composable () -> Unit
 ) {
+    val latestProject by rememberUpdatedState(project)
+    val latestOnDragDelta by rememberUpdatedState(onDragElementDelta)
+    val latestOnUpdateOffset by rememberUpdatedState(onUpdateElementOffset)
+    fun dispatchDrag(element: String, dx: Float, dy: Float) {
+        val deltaCb = latestOnDragDelta
+        if (deltaCb != null) {
+            deltaCb(element, dx, dy)
+        } else {
+            val p = latestProject
+            val cur = when (element) {
+                "LOGO" -> p.logoOffsetX to p.logoOffsetY
+                "HEADLINE" -> p.headlineOffsetX to p.headlineOffsetY
+                "TICKER" -> p.tickerOffsetX to p.tickerOffsetY
+                "REPORTER" -> p.reporterOffsetX to p.reporterOffsetY
+                "LIVE_BADGE" -> p.liveBadgeOffsetX to p.liveBadgeOffsetY
+                "LOCATION" -> p.locationOffsetX to p.locationOffsetY
+                "CLOCK" -> p.clockOffsetX to p.clockOffsetY
+                "STICKERS" -> p.stickersOffsetX to p.stickersOffsetY
+                else -> 0f to 0f
+            }
+            latestOnUpdateOffset?.invoke(element, cur.first + dx, cur.second + dy)
+        }
+    }
     // Current running time
     var currentTimeString by remember { mutableStateOf("") }
     LaunchedEffect(Unit) {
@@ -131,118 +160,352 @@ fun NewsOverlayFrame(
         project.panZoomStartScale + (project.panZoomEndScale - project.panZoomStartScale) * timelineProgress.coerceIn(0f, 1f)
     }.coerceIn(1.0f, 2.5f)
 
+    // VN Motion FX continuous phase
+    val vnMotionPhase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 700, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "vnMotion"
+    )
+
+    val vnFxScale = when (project.vnMotionFx) {
+        "ZOOM_PULSE" -> 1f + (vnMotionPhase * 0.08f)
+        "EXPANSION" -> 1f + (vnMotionPhase * 0.14f)
+        "JITTER" -> 1.03f + (if (vnMotionPhase > 0.5f) 0.04f else 0f)
+        else -> 1f
+    }
+    val vnFxTx = if (project.vnMotionFx == "SHAKE") (vnMotionPhase - 0.5f) * 14f else 0f
+    val vnFxTy = if (project.vnMotionFx == "SHAKE") ((vnMotionPhase * 2f) % 1f - 0.5f) * 10f else 0f
+
+    val vnBgModifier = when (project.vnBackgroundStyle) {
+        "NAVY_STUDIO" -> Modifier.background(Color(0xFF0A192F))
+        "CRIMSON_NEWS" -> Modifier.background(Color(0xFF3E0B12))
+        "GOLD_ROYAL" -> Modifier.background(Color(0xFF3B2F08))
+        "GRADIENT_DARK" -> Modifier.background(
+            Brush.verticalGradient(listOf(Color(0xFF0D1B2A), Color(0xFF1B263B), Color(0xFF000000)))
+        )
+        else -> Modifier.background(Color.Black)
+    }
+    val vnBorderColor = remember(project.vnBorderColorHex) {
+        try {
+            Color(android.graphics.Color.parseColor(project.vnBorderColorHex))
+        } catch (_: Exception) {
+            NewsGold
+        }
+    }
+
+    // Clip In-Animation, Out-Animation & Split/Clip Transition computation
+    val normProg = timelineProgress.coerceIn(0f, 1f)
+    val inT = if (normProg < 0.14f) (normProg / 0.14f).coerceIn(0f, 1f) else 1f
+    val outT = if (normProg > 0.86f) ((1f - normProg) / 0.14f).coerceIn(0f, 1f) else 1f
+    val transCenter = splitPointRatio ?: 0.06f
+    val distToTrans = kotlin.math.abs(normProg - transCenter)
+    val transProg = if (project.activeTransition != "NONE" && distToTrans < 0.07f) {
+        (1f - (distToTrans / 0.07f)).coerceIn(0f, 1f)
+    } else 0f
+
     Box(
         modifier = modifier
             .aspectRatio(aspectMultiplier, matchHeightConstraintsFirst = false)
             .clip(RoundedCornerShape(8.dp))
-            .background(Color.Black)
+            .then(vnBgModifier)
+            .then(
+                if (project.vnBorderWidthDp > 0.5f) {
+                    Modifier.border(project.vnBorderWidthDp.dp, vnBorderColor, RoundedCornerShape(8.dp))
+                } else Modifier
+            )
             .testTag("news_overlay_frame"),
         contentAlignment = Alignment.Center
     ) {
-        // ================= BACKGROUND & LAYOUT MODE (FULL, SPLIT, PIP) =================
+        // ================= BACKGROUND & LAYOUT MODE (FULL, SPLIT, PIP) WITH CROP, ANIMATIONS & VN TRANSFORMS =================
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .graphicsLayer {
-                    scaleX = livePanZoomScale
-                    scaleY = livePanZoomScale
-                }
+                .then(
+                    if (project.vnBorderWidthDp > 0.5f) Modifier.padding(project.vnBorderWidthDp.dp) else Modifier
+                )
+                .clipToBounds()
         ) {
-            when (project.layoutMode) {
-                "SPLIT_SCREEN" -> {
-                    Row(modifier = Modifier.fillMaxSize()) {
-                        Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                            backgroundContent()
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        val panX = project.videoCropPanX.coerceIn(-1f, 1f)
+                        val panY = project.videoCropPanY.coerceIn(-1f, 1f)
+                        val cropZ = maxOf(
+                            project.videoCropZoom.coerceIn(1.0f, 3.0f),
+                            1f + maxOf(kotlin.math.abs(panX), kotlin.math.abs(panY)) * 0.45f
+                        )
+                        val inScale = when (project.inAnimation) {
+                            "POP_UP" -> 0.55f + 0.45f * inT
+                            else -> 1f
                         }
-                        Box(modifier = Modifier.width(2.dp).fillMaxHeight().background(NewsGold))
-                        Box(modifier = Modifier.weight(1f).fillMaxHeight().background(Color(0xFF1E293B))) {
-                            if (!project.secondaryMediaUri.isNullOrBlank()) {
-                                AsyncImage(
-                                    model = project.secondaryMediaUri,
-                                    contentDescription = "ग्राउंड फुटेज",
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentScale = ContentScale.Crop
-                                )
-                            } else {
-                                Box(
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text("ग्राउंड रिपोर्ट फुटेज", color = Color.Gray, fontSize = 11.sp)
+                        val transScale = when (project.activeTransition) {
+                            "ZOOM_BURST" -> 1f + transProg * 0.35f
+                            "CUBE_ROTATE" -> (1f - transProg * 0.25f)
+                            "3D_NEWS_FLIP" -> (1f - transProg * 0.15f)
+                            else -> 1f
+                        }
+                        val baseSx = livePanZoomScale * vnFxScale * cropZ * inScale * transScale
+                        val baseSy = livePanZoomScale * vnFxScale * cropZ * inScale * transScale
+                        scaleX = if (project.vnMirrorHorizontal) -baseSx else baseSx
+                        scaleY = if (project.vnFlipVertical) -baseSy else baseSy
+                        val inRot = if (project.inAnimation == "SPIN_CLOCKWISE") (1f - inT) * -360f else 0f
+                        rotationZ = project.vnRotationDegrees + inRot
+                        if (project.activeTransition == "3D_NEWS_FLIP") {
+                            rotationY = transProg * 90f
+                            cameraDistance = 12f * density
+                        } else if (project.activeTransition == "CUBE_ROTATE") {
+                            rotationY = transProg * 55f
+                            cameraDistance = 10f * density
+                        }
+                        val inTx = if (project.inAnimation == "SLIDE_RIGHT") -(1f - inT) * size.width else 0f
+                        val inTy = if (project.inAnimation == "SLIDE_UP") (1f - inT) * size.height else 0f
+                        val outTx = if (project.outAnimation == "SLIDE_LEFT") -(1f - outT) * size.width else 0f
+                        val outTy = if (project.outAnimation == "SLIDE_DOWN") (1f - outT) * size.height else 0f
+                        val maxShiftX = ((cropZ - 1f) * 0.5f) * size.width
+                        val maxShiftY = ((cropZ - 1f) * 0.5f) * size.height
+                        translationX = vnFxTx + (panX * maxShiftX) + inTx + outTx +
+                            if (project.activeTransition == "WIPE_RIGHT") transProg * size.width * 0.25f else 0f
+                        translationY = vnFxTy + (panY * maxShiftY) + inTy + outTy
+                        val inAlpha = if (project.inAnimation == "FADE_IN") inT else 1f
+                        val outAlpha = if (project.outAnimation == "FADE_OUT") outT else 1f
+                        val transAlpha = if (project.activeTransition == "CROSSFADE") (1f - transProg * 0.65f) else 1f
+                        alpha = (project.vnVideoOpacity.coerceIn(0.2f, 1.0f) * inAlpha * outAlpha * transAlpha).coerceIn(0f, 1f)
+                    }
+            ) {
+                when (project.layoutMode) {
+                    "SPLIT_SCREEN" -> {
+                        Row(modifier = Modifier.fillMaxSize()) {
+                            Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                                backgroundContent()
+                            }
+                            Box(modifier = Modifier.width(2.dp).fillMaxHeight().background(NewsGold))
+                            Box(modifier = Modifier.weight(1f).fillMaxHeight().background(Color(0xFF1E293B))) {
+                                if (!project.secondaryMediaUri.isNullOrBlank()) {
+                                    AsyncImage(
+                                        model = project.secondaryMediaUri,
+                                        contentDescription = "ग्राउंड फुटेज",
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                } else {
+                                    Box(
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text("ग्राउंड रिपोर्ट फुटेज", color = Color.Gray, fontSize = 11.sp)
+                                    }
                                 }
                             }
                         }
                     }
-                }
 
-                else -> {
-                    // Fullscreen background
-                    backgroundContent()
+                    else -> {
+                        // Fullscreen background
+                        backgroundContent()
 
-                    // Picture In Picture (PIP) floating box
-                    if (project.layoutMode == "PIP_CORNER") {
-                        Box(
-                            modifier = Modifier
-                                .padding(8.dp)
-                                .size(width = 110.dp, height = 75.dp)
-                                .align(Alignment.CenterEnd)
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(Color(0xFF0F172A))
-                                .border(1.5.dp, NewsGold, RoundedCornerShape(6.dp))
-                        ) {
-                            if (!project.secondaryMediaUri.isNullOrBlank()) {
-                                AsyncImage(
-                                    model = project.secondaryMediaUri,
-                                    contentDescription = "PIP मीडिया",
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentScale = ContentScale.Crop
-                                )
-                            } else {
-                                Box(
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text("PIP विंडो", color = Color.White, fontSize = 10.sp)
-                                }
-                            }
+                        // Picture In Picture (PIP) floating box
+                        if (project.layoutMode == "PIP_CORNER") {
                             Box(
                                 modifier = Modifier
-                                    .background(NewsRedPrimary, RoundedCornerShape(bottomEnd = 4.dp))
-                                    .padding(horizontal = 4.dp, vertical = 1.dp)
-                                    .align(Alignment.TopStart)
+                                    .padding(8.dp)
+                                    .size(width = 110.dp, height = 75.dp)
+                                    .align(Alignment.CenterEnd)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(Color(0xFF0F172A))
+                                    .border(1.5.dp, NewsGold, RoundedCornerShape(6.dp))
                             ) {
-                                Text("लाइव", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                if (!project.secondaryMediaUri.isNullOrBlank()) {
+                                    AsyncImage(
+                                        model = project.secondaryMediaUri,
+                                        contentDescription = "PIP मीडिया",
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                } else {
+                                    Box(
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text("PIP विंडो", color = Color.White, fontSize = 10.sp)
+                                    }
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .background(NewsRedPrimary, RoundedCornerShape(bottomEnd = 4.dp))
+                                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                                        .align(Alignment.TopStart)
+                                ) {
+                                    Text("लाइव", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                     }
                 }
             }
+
+            // Video Edge Crop Bars (from manual Left/Top/Right/Bottom sliders + 21:9 Cinema Preset)
+            val cLeft = project.videoCropLeft.coerceIn(0f, 0.4f)
+            val cRight = project.videoCropRight.coerceIn(0f, 0.4f)
+            val cTop = (project.videoCropTop + if (project.videoCropPreset == "21:9") 0.12f else 0f).coerceIn(0f, 0.42f)
+            val cBottom = (project.videoCropBottom + if (project.videoCropPreset == "21:9") 0.12f else 0f).coerceIn(0f, 0.42f)
+            val pSide = when (project.videoCropPreset) {
+                "1:1" -> 0.15f
+                "4:5" -> 0.18f
+                "9:16" -> 0.24f
+                "4:3" -> 0.08f
+                else -> 0f
+            }
+            val effLeft = (cLeft + pSide).coerceIn(0f, 0.42f)
+            val effRight = (cRight + pSide).coerceIn(0f, 0.42f)
+
+            if (effLeft > 0.005f || effRight > 0.005f || cTop > 0.005f || cBottom > 0.005f) {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    if (effLeft > 0.005f) {
+                        Box(modifier = Modifier.fillMaxHeight().fillMaxWidth(effLeft).align(Alignment.CenterStart).background(Color.Black))
+                    }
+                    if (effRight > 0.005f) {
+                        Box(modifier = Modifier.fillMaxHeight().fillMaxWidth(effRight).align(Alignment.CenterEnd).background(Color.Black))
+                    }
+                    if (cTop > 0.005f) {
+                        Box(modifier = Modifier.fillMaxWidth().fillMaxHeight(cTop).align(Alignment.TopCenter).background(Color.Black))
+                    }
+                    if (cBottom > 0.005f) {
+                        Box(modifier = Modifier.fillMaxWidth().fillMaxHeight(cBottom).align(Alignment.BottomCenter).background(Color.Black))
+                    }
+                }
+            }
         }
 
-        // ================= COLOR FILTERS & VFX OVERLAY =================
+        // ================= COLOR FILTERS, ANIMATION FILTERS, VN ADJUSTMENTS & VFX OVERLAY =================
         VideoEffectsRenderer(
             activeFilter = project.activeFilter,
             activeVfx = project.activeVfx,
+            activeAnimationFilter = project.activeAnimationFilter,
             contrast = project.videoContrast,
             brightness = project.videoBrightness,
+            saturation = project.vnSaturation,
+            warmth = project.vnWarmth,
+            vignette = project.vnVignette,
+            vnMotionFx = project.vnMotionFx,
+            vnMaskType = project.vnMaskType,
+            hasNativeColorMatrixApplied = hasNativeColorMatrixApplied,
             modifier = Modifier.fillMaxSize()
         )
 
-        // Chroma Key Preview Indicator when Green/Blue Screen is active
+        // Chroma Key Live Preview Studio Frame Halo + Wipe/Glitch Transition Feedback
         if (project.chromaKeyEnabled) {
+            val keyBorder = when (project.chromaKeyColor.uppercase()) {
+                "#0000FF" -> Color(0xFF2979FF)
+                "#FFFFFF" -> Color.White
+                else -> Color(0xFF00E676)
+            }
             Box(
                 modifier = Modifier
+                    .fillMaxSize()
+                    .border(
+                        width = (1.5f + project.chromaKeySimilarity * 2.5f).dp,
+                        color = keyBorder.copy(alpha = 0.55f),
+                        shape = RoundedCornerShape(6.dp)
+                    )
+            )
+        }
+
+        if (transProg > 0.05f && project.activeTransition == "GLITCH_TV") {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xFF00E5FF).copy(alpha = transProg * 0.28f))
+            )
+        }
+
+        // Active Pro Status Chips (Chroma Key / VN Freeze / VN Reverse / VN Speed Curve)
+        if (project.chromaKeyEnabled || project.vnFreezeFrameActive || project.vnReversePlayback || project.vnSpeedCurve != "NONE") {
+            Row(
+                modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .padding(top = 6.dp)
-                    .background(Color(0xCC1B5E20), RoundedCornerShape(4.dp))
-                    .border(0.5.dp, Color.Green, RoundedCornerShape(4.dp))
-                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                    .padding(top = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                if (project.chromaKeyEnabled) {
+                    Box(
+                        modifier = Modifier
+                            .background(Color(0xCC1B5E20), RoundedCornerShape(4.dp))
+                            .border(0.5.dp, Color.Green, RoundedCornerShape(4.dp))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = "🟩 क्रोमा की (${(project.chromaKeySimilarity * 100).toInt()}%)",
+                            color = Color.White,
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+                if (project.vnFreezeFrameActive) {
+                    Box(
+                        modifier = Modifier
+                            .background(Color(0xCC006064), RoundedCornerShape(4.dp))
+                            .border(0.5.dp, Color.Cyan, RoundedCornerShape(4.dp))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text("🧊 FREEZE", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+                if (project.vnReversePlayback) {
+                    Box(
+                        modifier = Modifier
+                            .background(Color(0xCCB71C1C), RoundedCornerShape(4.dp))
+                            .border(0.5.dp, NewsGold, RoundedCornerShape(4.dp))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text("⏪ REVERSE", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+                if (project.vnSpeedCurve != "NONE") {
+                    Box(
+                        modifier = Modifier
+                            .background(Color(0xCC0F172A), RoundedCornerShape(4.dp))
+                            .border(0.5.dp, Color.Cyan, RoundedCornerShape(4.dp))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text("⚡ ${project.vnSpeedCurve}", color = Color.Cyan, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+
+        // VN Subtitle / Auto-Caption Overlay
+        if (project.vnSubtitleText.isNotBlank()) {
+            val subBg = when (project.vnSubtitleStyle) {
+                "NEWS_BAR" -> Color(0xDD8E0000)
+                "YELLOW_BOLD" -> Color(0xCC000000)
+                "MINIMAL" -> Color.Transparent
+                else -> Color(0xBB000000)
+            }
+            val subColor = when (project.vnSubtitleStyle) {
+                "YELLOW_BOLD" -> NewsGold
+                else -> Color.White
+            }
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .padding(horizontal = 18.dp)
+                    .offset(y = 26.dp)
+                    .background(subBg, RoundedCornerShape(6.dp))
+                    .padding(horizontal = 10.dp, vertical = 4.dp)
             ) {
                 Text(
-                    text = "🟩 क्रोमा की सक्रिय (${(project.chromaKeySimilarity * 100).toInt()}%)",
-                    color = Color.White,
-                    fontSize = 8.sp,
-                    fontWeight = FontWeight.Bold
+                    text = project.vnSubtitleText,
+                    color = subColor,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
         }
@@ -292,11 +555,7 @@ fun NewsOverlayFrame(
                                 .pointerInput(Unit) {
                                     detectDragGestures { change, dragAmount ->
                                         change.consume()
-                                        onUpdateElementOffset?.invoke(
-                                            "LOGO",
-                                            project.logoOffsetX + dragAmount.x,
-                                            project.logoOffsetY + dragAmount.y
-                                        )
+                                        dispatchDrag("LOGO", dragAmount.x, dragAmount.y)
                                     }
                                 }
                         )
@@ -309,13 +568,7 @@ fun NewsOverlayFrame(
                             scale = project.liveBadgeScale,
                             offsetX = project.liveBadgeOffsetX,
                             offsetY = project.liveBadgeOffsetY,
-                            onDrag = { dx, dy ->
-                                onUpdateElementOffset?.invoke(
-                                    "LIVE_BADGE",
-                                    project.liveBadgeOffsetX + dx,
-                                    project.liveBadgeOffsetY + dy
-                                )
-                            }
+                            onDrag = { dx, dy -> dispatchDrag("LIVE_BADGE", dx, dy) }
                         )
                     }
 
@@ -325,13 +578,7 @@ fun NewsOverlayFrame(
                             scale = project.clockScale,
                             offsetX = project.clockOffsetX,
                             offsetY = project.clockOffsetY,
-                            onDrag = { dx, dy ->
-                                onUpdateElementOffset?.invoke(
-                                    "CLOCK",
-                                    project.clockOffsetX + dx,
-                                    project.clockOffsetY + dy
-                                )
-                            }
+                            onDrag = { dx, dy -> dispatchDrag("CLOCK", dx, dy) }
                         )
                     }
                 }
@@ -348,13 +595,7 @@ fun NewsOverlayFrame(
                             scale = project.liveBadgeScale,
                             offsetX = project.liveBadgeOffsetX,
                             offsetY = project.liveBadgeOffsetY,
-                            onDrag = { dx, dy ->
-                                onUpdateElementOffset?.invoke(
-                                    "LIVE_BADGE",
-                                    project.liveBadgeOffsetX + dx,
-                                    project.liveBadgeOffsetY + dy
-                                )
-                            }
+                            onDrag = { dx, dy -> dispatchDrag("LIVE_BADGE", dx, dy) }
                         )
                     }
 
@@ -372,11 +613,7 @@ fun NewsOverlayFrame(
                                 .pointerInput(Unit) {
                                     detectDragGestures { change, dragAmount ->
                                         change.consume()
-                                        onUpdateElementOffset?.invoke(
-                                            "LOGO",
-                                            project.logoOffsetX + dragAmount.x,
-                                            project.logoOffsetY + dragAmount.y
-                                        )
+                                        dispatchDrag("LOGO", dragAmount.x, dragAmount.y)
                                     }
                                 }
                         )
@@ -389,11 +626,7 @@ fun NewsOverlayFrame(
                                 .pointerInput(Unit) {
                                     detectDragGestures { change, dragAmount ->
                                         change.consume()
-                                        onUpdateElementOffset?.invoke(
-                                            "LOCATION",
-                                            project.locationOffsetX + dragAmount.x,
-                                            project.locationOffsetY + dragAmount.y
-                                        )
+                                        dispatchDrag("LOCATION", dragAmount.x, dragAmount.y)
                                     }
                                 }
                                 .background(
@@ -429,13 +662,7 @@ fun NewsOverlayFrame(
                             scale = project.clockScale,
                             offsetX = project.clockOffsetX,
                             offsetY = project.clockOffsetY,
-                            onDrag = { dx, dy ->
-                                onUpdateElementOffset?.invoke(
-                                    "CLOCK",
-                                    project.clockOffsetX + dx,
-                                    project.clockOffsetY + dy
-                                )
-                            }
+                            onDrag = { dx, dy -> dispatchDrag("CLOCK", dx, dy) }
                         )
                     }
                 }
@@ -458,11 +685,7 @@ fun NewsOverlayFrame(
                         .pointerInput(Unit) {
                             detectDragGestures { change, dragAmount ->
                                 change.consume()
-                                onUpdateElementOffset?.invoke(
-                                    "LOGO",
-                                    project.logoOffsetX + dragAmount.x,
-                                    project.logoOffsetY + dragAmount.y
-                                )
+                                dispatchDrag("LOGO", dragAmount.x, dragAmount.y)
                             }
                         }
                 )
@@ -482,11 +705,7 @@ fun NewsOverlayFrame(
                         .pointerInput(Unit) {
                             detectDragGestures { change, dragAmount ->
                                 change.consume()
-                                onUpdateElementOffset?.invoke(
-                                    "LOGO",
-                                    project.logoOffsetX + dragAmount.x,
-                                    project.logoOffsetY + dragAmount.y
-                                )
+                                dispatchDrag("LOGO", dragAmount.x, dragAmount.y)
                             }
                         }
                 )
@@ -504,11 +723,7 @@ fun NewsOverlayFrame(
                         .pointerInput(Unit) {
                             detectDragGestures { change, dragAmount ->
                                 change.consume()
-                                onUpdateElementOffset?.invoke(
-                                    "STICKERS",
-                                    project.stickersOffsetX + dragAmount.x,
-                                    project.stickersOffsetY + dragAmount.y
-                                )
+                                dispatchDrag("STICKERS", dragAmount.x, dragAmount.y)
                             }
                         },
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -564,11 +779,7 @@ fun NewsOverlayFrame(
                             .pointerInput(Unit) {
                                 detectDragGestures { change, dragAmount ->
                                     change.consume()
-                                    onUpdateElementOffset?.invoke(
-                                        "REPORTER",
-                                        project.reporterOffsetX + dragAmount.x,
-                                        project.reporterOffsetY + dragAmount.y
-                                    )
+                                    dispatchDrag("REPORTER", dragAmount.x, dragAmount.y)
                                 }
                             },
                         contentAlignment = if (project.reporterPosition == "BOTTOM_RIGHT") Alignment.CenterEnd else Alignment.CenterStart
@@ -595,11 +806,7 @@ fun NewsOverlayFrame(
                             .pointerInput(Unit) {
                                 detectDragGestures { change, dragAmount ->
                                     change.consume()
-                                    onUpdateElementOffset?.invoke(
-                                        "HEADLINE",
-                                        project.headlineOffsetX + dragAmount.x,
-                                        project.headlineOffsetY + dragAmount.y
-                                    )
+                                    dispatchDrag("HEADLINE", dragAmount.x, dragAmount.y)
                                 }
                             }
                     ) {
@@ -626,11 +833,7 @@ fun NewsOverlayFrame(
                             .pointerInput(Unit) {
                                 detectDragGestures { change, dragAmount ->
                                     change.consume()
-                                    onUpdateElementOffset?.invoke(
-                                        "TICKER",
-                                        project.tickerOffsetX + dragAmount.x,
-                                        project.tickerOffsetY + dragAmount.y
-                                    )
+                                    dispatchDrag("TICKER", dragAmount.x, dragAmount.y)
                                 }
                             }
                     ) {
@@ -659,11 +862,7 @@ fun NewsOverlayFrame(
                         .pointerInput(Unit) {
                             detectDragGestures { change, dragAmount ->
                                 change.consume()
-                                onUpdateElementOffset?.invoke(
-                                    "HEADLINE",
-                                    project.headlineOffsetX + dragAmount.x,
-                                    project.headlineOffsetY + dragAmount.y
-                                )
+                                dispatchDrag("HEADLINE", dragAmount.x, dragAmount.y)
                             }
                         }
                 ) {
@@ -692,11 +891,7 @@ fun NewsOverlayFrame(
                         .pointerInput(Unit) {
                             detectDragGestures { change, dragAmount ->
                                 change.consume()
-                                onUpdateElementOffset?.invoke(
-                                    "HEADLINE",
-                                    project.headlineOffsetX + dragAmount.x,
-                                    project.headlineOffsetY + dragAmount.y
-                                )
+                                dispatchDrag("HEADLINE", dragAmount.x, dragAmount.y)
                             }
                         }
                 ) {
@@ -724,11 +919,7 @@ fun NewsOverlayFrame(
                         .pointerInput(Unit) {
                             detectDragGestures { change, dragAmount ->
                                 change.consume()
-                                onUpdateElementOffset?.invoke(
-                                    "TICKER",
-                                    project.tickerOffsetX + dragAmount.x,
-                                    project.tickerOffsetY + dragAmount.y
-                                )
+                                dispatchDrag("TICKER", dragAmount.x, dragAmount.y)
                             }
                         }
                 ) {

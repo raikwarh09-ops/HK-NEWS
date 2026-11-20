@@ -1,0 +1,2971 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HK NEWS PC Studio Pro — हर खबर न्यूज़ वीडियो एडिटर</title>
+  <style>
+    :root {
+      --bg-deep: #070b14;
+      --bg-panel: #0f172a;
+      --bg-card: #162035;
+      --bg-hover: #1e293b;
+      --news-red: #c62828;
+      --news-red-bright: #ef4444;
+      --news-gold: #ffd54f;
+      --news-cyan: #00e5ff;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --border-soft: rgba(255, 255, 255, 0.12);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', 'Noto Sans Devanagari', system-ui, -apple-system, sans-serif;
+      background: var(--bg-deep);
+      color: var(--text-main);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      user-select: none;
+    }
+    .topbar {
+      min-height: 54px;
+      background: #090d16;
+      border-bottom: 1px solid var(--border-soft);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 14px;
+      gap: 10px;
+      flex-wrap: wrap;
+      flex-shrink: 0;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; }
+    .brand-logo {
+      width: 36px; height: 36px; border-radius: 50%;
+      background: radial-gradient(circle at 30% 30%, #ef4444, #0d47a1);
+      border: 2px solid var(--news-gold);
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 900; font-size: 13px; color: #fff;
+      box-shadow: 0 0 12px rgba(255, 213, 79, 0.35);
+    }
+    .brand-title { display: flex; flex-direction: column; }
+    .brand-title h1 {
+      font-size: 14px; font-weight: 900; letter-spacing: 0.4px;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .badge-pc {
+      background: var(--news-red); color: #fff; font-size: 10px;
+      padding: 2px 6px; border-radius: 4px; font-weight: 800;
+    }
+    .brand-sub { font-size: 10px; color: var(--news-gold); }
+    .top-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .btn {
+      border: 1px solid var(--border-soft);
+      background: var(--bg-card);
+      color: #fff;
+      padding: 7px 11px;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      transition: all 0.15s ease;
+    }
+    .btn:hover { background: var(--bg-hover); transform: translateY(-1px); }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+    .btn-primary { background: linear-gradient(90deg, #1565c0, #0d47a1); border-color: rgba(0, 229, 255, 0.4); }
+    .btn-save { background: linear-gradient(90deg, #1b5e20, #2e7d32); border-color: rgba(255, 213, 79, 0.6); }
+    .btn-cyan { background: linear-gradient(90deg, #00838f, #006064); border-color: rgba(0, 229, 255, 0.7); }
+    .btn-red { background: linear-gradient(90deg, #e53935, #b71c1c); border-color: rgba(255, 213, 79, 0.7); }
+    .btn-red.recording { animation: pulseRec 1s infinite; }
+    @keyframes pulseRec {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+      50% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+    }
+
+    .workspace {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 445px;
+      min-height: 0;
+      overflow: hidden;
+    }
+    .stage-pane {
+      display: flex;
+      flex-direction: column;
+      padding: 10px 12px;
+      gap: 8px;
+      min-height: 0;
+      overflow: hidden;
+    }
+    .monitor-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--bg-panel);
+      border: 1px solid var(--border-soft);
+      border-radius: 10px;
+      padding: 6px 10px;
+      font-size: 11px;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .monitor-wrap {
+      flex: 1;
+      background: #02040a;
+      border: 1px solid var(--border-soft);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+      min-height: 220px;
+    }
+    canvas#studioCanvas {
+      max-width: 100%;
+      max-height: 100%;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.75);
+      border-radius: 6px;
+      cursor: grab;
+    }
+    canvas#studioCanvas.draw-mode { cursor: crosshair; }
+    canvas#studioCanvas:active { cursor: grabbing; }
+    .hint-pill {
+      position: absolute;
+      top: 8px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(7, 11, 20, 0.84);
+      border: 1px solid rgba(255, 213, 79, 0.45);
+      color: var(--news-gold);
+      font-size: 10px;
+      padding: 3px 10px;
+      border-radius: 999px;
+      pointer-events: none;
+      white-space: nowrap;
+    }
+
+    .timeline-box {
+      background: var(--bg-panel);
+      border: 1px solid var(--border-soft);
+      border-radius: 12px;
+      padding: 8px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+    .timeline-controls {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .track-strip {
+      height: 36px;
+      background: #09101f;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 8px;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      padding: 0 10px;
+      font-size: 10px;
+      color: var(--news-gold);
+      gap: 8px;
+      cursor: pointer;
+    }
+    .track-fill {
+      position: absolute; top: 0; bottom: 0;
+      background: rgba(21, 101, 192, 0.35);
+      border-left: 3px solid var(--news-gold);
+      border-right: 3px solid var(--news-gold);
+      pointer-events: none;
+    }
+    .playhead-line {
+      position: absolute; top: 0; bottom: 0; width: 2px;
+      background: #ef4444; box-shadow: 0 0 6px #ef4444;
+      z-index: 3; pointer-events: none;
+    }
+    .kf-diamond {
+      position: absolute; top: 50%; width: 8px; height: 8px;
+      background: #ffd54f; border: 1px solid #fff;
+      transform: translate(-50%, -50%) rotate(45deg);
+      z-index: 2; pointer-events: none;
+    }
+    .beat-dots { display: flex; gap: 12px; margin-left: auto; z-index: 1; }
+    .beat-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--news-cyan); opacity: 0.75; }
+
+    .inspector-pane {
+      background: var(--bg-panel);
+      border-left: 1px solid var(--border-soft);
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+    .tab-strip {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      padding: 7px;
+      background: #0a101d;
+      border-bottom: 1px solid var(--border-soft);
+    }
+    .tab-btn {
+      flex: 1 1 112px;
+      padding: 7px 6px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: #10192d;
+      color: var(--text-muted);
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .tab-btn.active {
+      background: var(--news-red);
+      color: #fff;
+      border-color: rgba(255, 213, 79, 0.7);
+    }
+    .inspector-scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-soft);
+      border-radius: 10px;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .card-title {
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--news-gold);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+    }
+    label.field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 11px;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+    input[type="text"], input[type="password"], textarea, select {
+      background: #09101f;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      color: #fff;
+      padding: 7px 9px;
+      border-radius: 7px;
+      font-size: 12px;
+      font-family: inherit;
+    }
+    input[type="range"] { width: 100%; accent-color: var(--news-gold); }
+    .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+    .chip-row { display: flex; flex-wrap: wrap; gap: 5px; }
+    .chip {
+      padding: 5px 9px;
+      border-radius: 999px;
+      border: 1px solid var(--border-soft);
+      background: #0b1324;
+      color: #e2e8f0;
+      font-size: 10px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .chip.active {
+      background: var(--news-gold);
+      color: #070b14;
+      border-color: #fff;
+    }
+    .chip.chatgpt {
+      border-color: rgba(0, 229, 255, 0.5);
+      background: #0d1f36;
+      color: #e0f7fa;
+    }
+    .chip.chatgpt.active {
+      background: var(--news-cyan);
+      color: #04101c;
+      border-color: #fff;
+    }
+    .switch-row {
+      display: flex; align-items: center; justify-content: space-between;
+      font-size: 11px; padding: 2px 0;
+    }
+    .tpl-item {
+      background: #0b1324; border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 8px; padding: 7px 9px; cursor: pointer;
+      display: flex; justify-content: space-between; align-items: center; gap: 8px;
+    }
+    .tpl-item:hover { border-color: var(--news-gold); background: #13203b; }
+    .toast {
+      position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+      background: #1b5e20; color: #fff; border: 1px solid var(--news-gold);
+      padding: 9px 16px; border-radius: 10px; font-size: 12px; font-weight: 700;
+      z-index: 999; display: none; box-shadow: 0 8px 25px rgba(0,0,0,0.6);
+    }
+    @media (max-width: 980px) {
+      .workspace { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
+    }
+    .lock-overlay {
+      position: fixed; inset: 0; z-index: 2000;
+      background: radial-gradient(circle at top, #1a1026 0%, #060a14 70%);
+      display: flex; align-items: center; justify-content: center; padding: 20px;
+    }
+    .lock-card {
+      width: 100%; max-width: 420px; background: #0e172a;
+      border: 2px solid rgba(255, 213, 79, 0.7); border-radius: 18px; padding: 26px 24px;
+      display: flex; flex-direction: column; align-items: center; gap: 14px;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.85); text-align: center;
+    }
+    .lock-input-row { width: 100%; display: flex; gap: 6px; }
+    .lock-input-row input { flex: 1; padding: 10px 12px; font-size: 14px; }
+    .lock-err { color: #ff6b6b; font-size: 12px; font-weight: 700; display: none; }
+    .pc-footer {
+      flex-shrink: 0;
+      background: #060a13;
+      border-top: 1px solid var(--border-soft);
+      color: var(--news-gold);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.6px;
+      text-align: center;
+      padding: 5px 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="lock-overlay" id="pcLockOverlay">
+    <div class="lock-card">
+      <div class="brand-logo" style="width:64px;height:64px;font-size:22px;">HK</div>
+      <h2 style="font-size:18px;font-weight:900;color:#fff;">🔒 HK NEWS PC सुरक्षा लॉक</h2>
+      <p style="font-size:12px;color:#cbd5e1;line-height:1.5;">
+        सॉफ्टवेयर इंस्टॉल करने व शुरू करने के लिए पासवर्ड दर्ज करें
+      </p>
+      <div class="lock-input-row">
+        <input type="password" id="pcPasswordInput" placeholder="पासवर्ड दर्ज करें..." autocomplete="off" />
+        <button class="btn" id="btnTogglePcPwd" type="button">👁️</button>
+      </div>
+      <div class="lock-err" id="pcLockErr">❌ गलत पासवर्ड! कृपया सही पासवर्ड दर्ज करें।</div>
+      <button class="btn btn-red" id="btnUnlockPc" type="button" style="width:100%;justify-content:center;padding:11px;font-size:14px;">
+        🔓 अनलॉक करें (Unlock PC Studio)
+      </button>
+      <div style="font-size:11px;font-weight:800;color:#ffd54f;letter-spacing:0.5px;margin-top:2px;">Powered by Raikwar ji</div>
+    </div>
+  </div>
+
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-logo">HK</div>
+      <div class="brand-title">
+        <h1>HK NEWS <span class="badge-pc">PC STUDIO PRO</span></h1>
+        <div class="brand-sub">हर खबर • ऐप के सभी फ़ंक्शन + KineMaster + VN + ChatGPT वॉइस एडिटर</div>
+      </div>
+    </div>
+    <div class="top-actions">
+      <label class="btn btn-primary" title="PC से मुख्य वीडियो या फ़ोटो चुनें">
+        📁 वीडियो / फ़ोटो
+        <input type="file" id="mediaInput" accept="video/*,image/*" hidden />
+      </label>
+      <label class="btn" title="PIP / Split स्क्रीन के लिए दूसरी मीडिया चुनें">
+        🖼️ दूसरी मीडिया (PIP)
+        <input type="file" id="secondaryMediaInput" accept="video/*,image/*" hidden />
+      </label>
+      <button class="btn" id="btnWebcam">📷 वेबकैम</button>
+      <button class="btn" id="btnUndo" title="अंडू (Ctrl+Z)" disabled>↩️ Undo</button>
+      <button class="btn" id="btnRedo" title="रीडू (Ctrl+Y)" disabled>↪️ Redo</button>
+      <button class="btn" id="btnSnapshot">📸 पोस्टर</button>
+      <button class="btn btn-save" id="btnExportVideo">⚡ वीडियो सेव करें (2 Hr)</button>
+      <button class="btn btn-red" id="btnStopExport" style="display:none;">⏹️ एक्सपोर्ट रोकें (<span id="recTimer">00:00</span>)</button>
+      <button class="btn" id="btnLockPc" title="पासवर्ड लॉक लगाएँ">🔒 लॉक</button>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <!-- Left Broadcast Stage -->
+    <section class="stage-pane">
+      <div class="monitor-bar">
+        <div class="chip-row">
+          <button class="chip active" data-aspect="16:9">16:9 TV</button>
+          <button class="chip" data-aspect="9:16">9:16 Reels</button>
+          <button class="chip" data-aspect="1:1">1:1 Square</button>
+          <button class="chip" data-aspect="4:5">4:5 Post</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+          <button class="btn" id="btnToggleDraw">✍️ पेन मोड: बंद</button>
+          <button class="btn" id="btnPlayPause">⏸️ रोकें / चलाएँ</button>
+          <button class="btn" id="btnSFX">🔊 स्टिंगर</button>
+        </div>
+      </div>
+
+      <div class="monitor-wrap">
+        <div class="hint-pill" id="stageHint">💡 माउस से लोगो, हेडलाइन, रिपोर्टर, स्टिकर या पट्टी को पकड़कर कहीं भी सेट करें</div>
+        <canvas id="studioCanvas" width="1280" height="720"></canvas>
+      </div>
+
+      <div class="timeline-box">
+        <div class="timeline-controls">
+          <span style="font-size:11px;font-weight:800;color:var(--news-gold);">🎞️ KineMaster &amp; VN टाइमलाइन (2 घंटे तक)</span>
+          <div style="display:flex;gap:4px;flex-wrap:wrap;" id="durationPresets">
+            <button class="chip active" data-dur="10">10s</button>
+            <button class="chip" data-dur="60">1m</button>
+            <button class="chip" data-dur="300">5m</button>
+            <button class="chip" data-dur="900">15m</button>
+            <button class="chip" data-dur="1800">30m</button>
+            <button class="chip" data-dur="3600">1 Hr</button>
+            <button class="chip" data-dur="7200">2 Hr</button>
+          </div>
+          <span id="timeDisplay" style="font-size:11px;color:var(--text-muted);font-weight:700;">00:00 / 00:10</span>
+        </div>
+
+        <div class="track-strip" id="trackStrip" title="कहीं भी क्लिक कर के प्लेहेड घुमाएँ">
+          <div class="track-fill" id="trimHighlight" style="left:0%;right:0%;"></div>
+          <div class="playhead-line" id="playheadLine" style="left:0%;"></div>
+          <div id="splitPin" style="display:none;position:absolute;top:0;bottom:0;width:3px;background:#ffffff;box-shadow:0 0 6px #00e5ff;z-index:2;"></div>
+          <div id="keyframeTrackPins"></div>
+          <span style="z-index:1;">MAIN VIDEO + OVERLAY + AUDIO + KEYFRAME TRACK</span>
+          <div class="beat-dots" id="beatDots"></div>
+        </div>
+
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+          <input type="range" id="timelineSeek" min="0" max="1000" value="0" style="flex:1;min-width:140px;" title="टाइमलाइन सीक बार" />
+          <button class="btn" id="btnTrimLeftQuick">✂️ बायाँ ट्रिम</button>
+          <button class="btn" id="btnSplitTimelineQuick">✂️ स्प्लिट कट</button>
+          <button class="btn" id="btnTrimRightQuick">✂️ दायाँ ट्रिम</button>
+          <button class="btn" id="btnAddKeyframeQuick">🔑 +कीफ़्रेम</button>
+        </div>
+
+        <div class="row-2">
+          <label class="field">Trim Start (<span id="trimStartLbl">0%</span>)
+            <input type="range" id="trimStart" min="0" max="90" value="0" />
+          </label>
+          <label class="field">Trim End (<span id="trimEndLbl">100%</span>)
+            <input type="range" id="trimEnd" min="10" max="100" value="100" />
+          </label>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right Tabbed Inspector (All App Functions) -->
+    <aside class="inspector-pane">
+      <div class="tab-strip">
+        <button class="tab-btn active" data-tab="news">📰 न्यूज़ व स्क्रिप्ट</button>
+        <button class="tab-btn" data-tab="anim">✨ स्क्रीन व लोगो</button>
+        <button class="tab-btn" data-tab="kinemaster">🎬 KineMaster</button>
+        <button class="tab-btn" data-tab="vn">⚡ VN टूल्स</button>
+        <button class="tab-btn" data-tab="audio">🎙️ ChatGPT वॉइस</button>
+        <button class="tab-btn" data-tab="mediasave">💾 मीडिया व प्रोजेक्ट</button>
+      </div>
+
+      <div class="inspector-scroll">
+        <!-- TAB 1: NEWS, TEMPLATES, TELEPROMPTER & PROJECTS -->
+        <div class="tab-panel" id="tab-news">
+          <div class="card">
+            <div class="card-title">📰 ब्रेकिंग न्यूज़, हेडलाइन व रिपोर्टर</div>
+            <div class="row-2">
+              <label class="field">चैनल नाम
+                <input type="text" id="channelName" value="हर खबर H.K NEWS" />
+              </label>
+              <label class="field">चैनल टैगलाइन
+                <input type="text" id="channelTagline" value="सच की आवाज़ • लाइव" />
+              </label>
+            </div>
+            <div class="row-2">
+              <label class="field">श्रेणी बैज (Category)
+                <input type="text" id="category" value="ब्रेकिंग न्यूज़" />
+              </label>
+              <label class="field">हेल्पलाइन / संपर्क
+                <input type="text" id="helplineNumber" value="ख़बर हेतु: 94XXXXXXXX" />
+              </label>
+            </div>
+            <label class="field">मुख्य हेडलाइन (Headline)
+              <textarea id="headline" rows="2">बड़ा प्रशासनिक फेरबदल: कई ज़िलों में नए अधिकारियों की तैनाती</textarea>
+            </label>
+            <label class="field">उप-हेडलाइन (Sub Headline)
+              <input type="text" id="subHeadline" value="कैबिनेट बैठक में लिए गए बड़े फैसले, देखें पूरी रिपोर्ट" />
+            </label>
+            <div class="row-2">
+              <label class="field">ब्रेकिंग टैग
+                <input type="text" id="tickerTagText" value="⚡ ताज़ा अपडेट" />
+              </label>
+              <label class="field">LIVE बैज टेक्स्ट
+                <input type="text" id="liveBadgeText" value="LIVE TV" />
+              </label>
+            </div>
+            <label class="field">ब्रेकिंग न्यूज़ पट्टी (Scrolling Ticker)
+              <textarea id="tickerText" rows="2">ताज़ा खबरें लगातार जारी • देश और प्रदेश की हर बड़ी ख़बर सबसे पहले H.K NEWS पर • अभी सब्सक्राइब व शेयर करें</textarea>
+            </label>
+            <div class="row-3">
+              <label class="field">संवाददाता
+                <input type="text" id="reporterName" value="राजेश शर्मा" />
+              </label>
+              <label class="field">पद (Role)
+                <input type="text" id="reporterRole" value="विशेष संवाददाता" />
+              </label>
+              <label class="field">स्थान
+                <input type="text" id="location" value="नरसिंहपुर" />
+              </label>
+            </div>
+            <label class="field">मैनुअल घड़ी टेक्स्ट (खाली = ऑटो टाइम)
+              <input type="text" id="manualClockText" placeholder="उदा. 10:30 AM LIVE" />
+            </label>
+          </div>
+
+          <div class="card">
+            <div class="card-title">📋 हिंदी न्यूज़ हेडलाइन टेम्पलेट्स (8 Presets)</div>
+            <div id="headlineTemplatesList" style="display:flex;flex-direction:column;gap:5px;"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">
+              <span>📜 टेलीप्रॉम्प्टर कंट्रोलर (Anchor Script)</span>
+              <input type="checkbox" id="showTeleprompter" />
+            </div>
+            <div class="chip-row" id="teleprompterPresetsRow"></div>
+            <label class="field">टेलीप्रॉम्प्टर स्क्रिप्ट
+              <textarea id="teleprompterText" rows="3">नमस्कार! आप देख रहे हैं हर खबर H.K NEWS, और मैं हूँ आपका संवाददाता। आज की सबसे बड़ी ख़बर के साथ बुलेटिन की शुरुआत करते हैं।</textarea>
+            </label>
+            <div class="row-2">
+              <label class="field">स्क्रॉल गति (<span id="tpSpeedLbl">1.0x</span>)
+                <input type="range" id="tpSpeed" min="0.5" max="2.5" step="0.1" value="1.0" />
+              </label>
+              <label class="field">फ़ॉन्ट साइज़ (<span id="tpFontLbl">18px</span>)
+                <input type="range" id="tpFontSize" min="14" max="34" step="1" value="18" />
+              </label>
+            </div>
+            <button class="btn btn-cyan" id="btnSpeakScript">🤖 ChatGPT वॉइस से यह स्क्रिप्ट बोलें</button>
+          </div>
+        </div>
+
+        <!-- TAB 2: SCREEN PRESETS, OVERLAYS, LOGO & ANIMATIONS -->
+        <div class="tab-panel" id="tab-anim" style="display:none;">
+          <div class="card">
+            <div class="card-title">⚡ 1-क्लिक स्क्रीन प्रीसेट्स (Presets)</div>
+            <div class="chip-row" id="screenPresetsRow">
+              <button class="chip active" data-preset="CLASSIC_TV">📺 क्लासिक टीवी</button>
+              <button class="chip" data-preset="BREAKING_FOCUS">⚡ ब्रेकिंग फोकस</button>
+              <button class="chip" data-preset="REELS_SHORTS">📱 रील्स 9:16</button>
+              <button class="chip" data-preset="CLEAN_INTERVIEW">🎙️ क्लीन इंटरव्यू</button>
+            </div>
+            <button class="btn" id="btnResetLayout">↺ सभी ओवरले डिफ़ॉल्ट जगह व साइज़ पर रीसेट करें</button>
+          </div>
+
+          <div class="card">
+            <div class="card-title">🎨 चैनल लोगो व 12 एनिमेशन फ़िल्टर</div>
+            <div class="row-2">
+              <label class="field">लोगो प्रकार
+                <select id="logoType">
+                  <option value="HK_NEWS">H.K NEWS डिफ़ॉल्ट</option>
+                  <option value="CUSTOM_IMAGE">गैलरी/PC कस्टम लोगो</option>
+                  <option value="TEXT_BADGE">टेक्स्ट बैज लोगो</option>
+                </select>
+              </label>
+              <label class="btn btn-primary" style="align-self:end;justify-content:center;">
+                🖼️ कस्टम लोगो चुनें
+                <input type="file" id="logoInput" accept="image/*" hidden />
+              </label>
+            </div>
+            <div class="row-2">
+              <label class="field">लोगो कोना (Position)
+                <select id="logoPosition">
+                  <option value="TOP_LEFT">बाएँ ऊपर</option>
+                  <option value="TOP_RIGHT">दाएँ ऊपर</option>
+                  <option value="BOTTOM_LEFT">बाएँ नीचे</option>
+                  <option value="BOTTOM_RIGHT">दाएँ नीचे</option>
+                </select>
+              </label>
+              <label class="field">लोगो एनिमेशन (12 Styles)
+                <select id="logoAnim">
+                  <option value="SHINE_SWEEP">✨ शाइन स्वीप</option>
+                  <option value="SPIN_3D">🔄 3D स्पिन</option>
+                  <option value="PULSE_GLOW">🔥 पल्स ग्लो</option>
+                  <option value="NEON_BORDER">⚡ निऑन बॉर्डर</option>
+                  <option value="FLOAT_BOB">🌊 फ़्लोट बॉब</option>
+                  <option value="HOLOGRAM_GLITCH">👾 होलोग्राम ग्लिच</option>
+                  <option value="BOUNCE_POP">💥 बाउंस पॉप</option>
+                  <option value="GOLDEN_FLARE">☀️ गोल्डन फ्लेयर</option>
+                  <option value="RADIAL_RIPPLE">⭕ रेडियल रिपल</option>
+                  <option value="TV_SCANLINE">📺 टीवी स्कैनलाइन</option>
+                  <option value="SPARKLE_BURST">💎 स्पार्कल बर्स्ट</option>
+                  <option value="CHROME_BEVEL">🛡️ क्रोम बेवेल</option>
+                  <option value="NONE">सामान्य (Static)</option>
+                </select>
+              </label>
+            </div>
+            <div class="row-2">
+              <label class="field">लोगो साइज़ (<span id="logoScaleLbl">100%</span>)
+                <input type="range" id="logoScale" min="0.6" max="1.8" step="0.05" value="1.0" />
+              </label>
+              <label class="field">लोगो पारदर्शिता (<span id="logoOpacityLbl">95%</span>)
+                <input type="range" id="logoOpacity" min="0.3" max="1.0" step="0.05" value="0.95" />
+              </label>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">✨ हेडलाइन व पट्टी एनिमेशन एवं प्लेसमेंट</div>
+            <div class="row-2">
+              <label class="field">हेडलाइन एनिमेशन
+                <select id="headlineAnim">
+                  <option value="SHINE_SWEEP">✨ गोल्डन शाइन</option>
+                  <option value="PULSE_GLOW">🔥 पल्स ग्लो</option>
+                  <option value="SLIDE_REVEAL">➡️ स्लाइड लाइन</option>
+                  <option value="NEON_FLASH">⚡ निऑन फ़्लैश</option>
+                  <option value="ZOOM_POP">🔍 ज़ूम पॉप</option>
+                  <option value="NONE">सामान्य (Static)</option>
+                </select>
+              </label>
+              <label class="field">हेडलाइन जगह
+                <select id="headlinePos">
+                  <option value="BOTTOM">निचली पट्टी</option>
+                  <option value="CENTER">मध्य में</option>
+                  <option value="TOP">शीर्ष पर</option>
+                </select>
+              </label>
+            </div>
+            <div class="row-2">
+              <label class="field">टिकर पट्टी एनिमेशन
+                <select id="tickerAnim">
+                  <option value="BREAKING_SWEEP">🚨 ब्रेकिंग शाइन</option>
+                  <option value="PULSE_BORDER">🔥 पल्स बॉर्डर</option>
+                  <option value="FLASH_TAG">⚡ फ़्लैश टैग</option>
+                  <option value="WAVE_GLOW">🌊 वेव ग्लो</option>
+                  <option value="NONE">साधारण (None)</option>
+                </select>
+              </label>
+              <label class="field">टिकर पट्टी जगह
+                <select id="tickerPos">
+                  <option value="BOTTOM">सबसे नीचे</option>
+                  <option value="TOP">सबसे ऊपर</option>
+                </select>
+              </label>
+            </div>
+            <label class="field">पट्टी स्क्रॉल रफ़्तार (<span id="tickerSpeedLbl">1.0x</span>)
+              <input type="range" id="tickerSpeed" min="0.4" max="2.5" step="0.1" value="1.0" />
+            </label>
+          </div>
+
+          <div class="card">
+            <div class="card-title">🏷️ ऑन-स्क्रीन ब्रॉडकास्ट स्टिकर्स (7 Stickers)</div>
+            <div class="chip-row" id="stickersRow"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">🎛️ मैनुअल स्क्रीन सेवाएँ व आकार (70%-160%)</div>
+            <div class="row-2">
+              <div class="switch-row"><span>📺 लोगो</span><input type="checkbox" id="showLogo" checked /></div>
+              <div class="switch-row"><span>🔴 LIVE बैज</span><input type="checkbox" id="showLive" checked /></div>
+              <div class="switch-row"><span>📰 हेडलाइन</span><input type="checkbox" id="showHeadline" checked /></div>
+              <div class="switch-row"><span>📜 टिकर पट्टी</span><input type="checkbox" id="showTicker" checked /></div>
+              <div class="switch-row"><span>📍 लोकेशन</span><input type="checkbox" id="showLocation" checked /></div>
+              <div class="switch-row"><span>🕒 घड़ी</span><input type="checkbox" id="showMeta" checked /></div>
+              <div class="switch-row"><span>🎙️ रिपोर्टर</span><input type="checkbox" id="showReporter" checked /></div>
+              <div class="switch-row"><span>🏷️ स्टिकर्स</span><input type="checkbox" id="showStickers" checked /></div>
+            </div>
+            <div class="row-2">
+              <label class="field">हेडलाइन साइज़ (<span id="headlineScaleLbl">100%</span>)
+                <input type="range" id="headlineScale" min="0.7" max="1.6" step="0.05" value="1.0" />
+              </label>
+              <label class="field">टिकर साइज़ (<span id="tickerScaleLbl">100%</span>)
+                <input type="range" id="tickerScale" min="0.7" max="1.6" step="0.05" value="1.0" />
+              </label>
+              <label class="field">रिपोर्टर साइज़ (<span id="reporterScaleLbl">100%</span>)
+                <input type="range" id="reporterScale" min="0.7" max="1.6" step="0.05" value="1.0" />
+              </label>
+              <label class="field">LIVE व घड़ी साइज़ (<span id="badgeScaleLbl">100%</span>)
+                <input type="range" id="badgeScale" min="0.7" max="1.6" step="0.05" value="1.0" />
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 3: KINEMASTER PRO TOOLS -->
+        <div class="tab-panel" id="tab-kinemaster" style="display:none;">
+          <div class="card">
+            <div class="card-title">
+              <span>🟩 क्रोमा की / ग्रीन स्क्रीन (Chroma Key)</span>
+              <input type="checkbox" id="chromaEnabled" />
+            </div>
+            <div class="row-2">
+              <label class="field">की कलर चुनें
+                <select id="chromaColor">
+                  <option value="#00FF00">🟢 हरा (Green Screen)</option>
+                  <option value="#0000FF">🔵 नीला (Blue Screen)</option>
+                  <option value="#FFFFFF">⚪ सफ़ेद (White Screen)</option>
+                </select>
+              </label>
+              <label class="field">संवेदनशीलता (<span id="chromaSimLbl">45%</span>)
+                <input type="range" id="chromaSimilarity" min="0.1" max="0.9" step="0.02" value="0.45" />
+              </label>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">📑 लेआउट मोड (Split Screen / PIP)</div>
+            <div class="row-2">
+              <label class="field">स्क्रीन लेआउट
+                <select id="layoutMode">
+                  <option value="FULLSCREEN">फ़ुल स्क्रीन (Full)</option>
+                  <option value="SPLIT_SCREEN">स्प्लिट स्क्रीन (Dual 50/50)</option>
+                  <option value="PIP_CORNER">PIP बॉक्स (Corner Window)</option>
+                </select>
+              </label>
+              <button class="btn btn-primary" style="align-self:end;justify-content:center;" onclick="document.getElementById('secondaryMediaInput').click()">
+                ➕ दूसरी वीडियो/फ़ोटो चुनें
+              </button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">✨ इन/आउट एनिमेशन व 3D ट्रांज़िशन</div>
+            <div class="row-2">
+              <label class="field">In-Animation (प्रवेश)
+                <select id="inAnim">
+                  <option value="FADE_IN">🌟 फ़ेड इन (Fade In)</option>
+                  <option value="POP_UP">💥 पॉप अप (Pop Up)</option>
+                  <option value="SLIDE_RIGHT">➡️ स्लाइड राइट</option>
+                  <option value="SLIDE_UP">⬆️ स्लाइड अप</option>
+                  <option value="SPIN_CLOCKWISE">🔄 3D स्पिन चक्र</option>
+                  <option value="NONE">कोई नहीं (None)</option>
+                </select>
+              </label>
+              <label class="field">Out-Animation (प्रस्थान)
+                <select id="outAnim">
+                  <option value="FADE_OUT">🌙 फ़ेड आउट</option>
+                  <option value="SLIDE_LEFT">⬅️ स्लाइड लेफ्ट</option>
+                  <option value="SLIDE_DOWN">⬇️ स्लाइड डाउन</option>
+                  <option value="NONE">कोई नहीं (None)</option>
+                </select>
+              </label>
+            </div>
+            <label class="field">3D क्लिप ट्रांज़िशन (स्प्लिट कट पर लागू)
+              <select id="activeTransition">
+                <option value="NONE">बिना ट्रांज़िशन (Cut)</option>
+                <option value="3D_NEWS_FLIP">🌐 3D न्यूज़ ग्लोब फ्लिप</option>
+                <option value="CUBE_ROTATE">🧊 3D क्यूब रोटेशन</option>
+                <option value="WIPE_RIGHT">⚡ ब्रेकिंग वाइप स्वाइप</option>
+                <option value="ZOOM_BURST">🚀 ज़ूम ब्लास्ट पंच</option>
+                <option value="CROSSFADE">✨ स्मूथ क्रॉसफ़ेड</option>
+                <option value="GLITCH_TV">📺 टीवी ब्रॉडकास्ट ग्लिच</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="card">
+            <div class="card-title">🔍 पैन व ज़ूम (Ken Burns) + कलर व स्पीड</div>
+            <div class="row-2">
+              <div class="switch-row"><span>🔍 पैन-ज़ूम चालू</span><input type="checkbox" id="panZoom" /></div>
+              <div class="switch-row"><span>🔒 लॉक (=)</span><input type="checkbox" id="panZoomLock" /></div>
+            </div>
+            <div class="row-2">
+              <label class="field">Start ज़ूम (<span id="pzStartLbl">100%</span>)
+                <input type="range" id="pzStartScale" min="1.0" max="2.5" step="0.05" value="1.0" />
+              </label>
+              <label class="field">End ज़ूम (<span id="pzEndLbl">125%</span>)
+                <input type="range" id="pzEndScale" min="1.0" max="2.5" step="0.05" value="1.25" />
+              </label>
+            </div>
+            <label class="field">वीडियो स्पीड (<span id="speedLbl">1.0x</span>)
+              <input type="range" id="playbackSpeed" min="0.25" max="4.0" step="0.05" value="1.0" />
+            </label>
+            <div class="row-2">
+              <label class="field">चमक (Brightness: <span id="brightLbl">0</span>)
+                <input type="range" id="brightness" min="-40" max="40" value="0" />
+              </label>
+              <label class="field">कंट्रास्ट (Contrast: <span id="contrastLbl">100%</span>)
+                <input type="range" id="contrast" min="60" max="200" value="100" />
+              </label>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">🔑 कीफ़्रेम (Keyframe) + ✍️ हैंडराइटिंग</div>
+            <div class="row-2">
+              <label class="field">कीफ़्रेम ज़ूम (<span id="kfScaleLbl">100%</span>)
+                <input type="range" id="kfScaleInput" min="0.4" max="2.5" step="0.05" value="1.0" />
+              </label>
+              <label class="field">कीफ़्रेम ओपैसिटी (<span id="kfOpacityLbl">100%</span>)
+                <input type="range" id="kfOpacityInput" min="0.1" max="1.0" step="0.05" value="1.0" />
+              </label>
+            </div>
+            <div class="row-2">
+              <button class="btn btn-primary" id="btnAddKeyframe">🔑 कीफ़्रेम जोड़ें (+)</button>
+              <button class="btn" id="btnClearKeyframes">🗑️ कीफ़्रेम हटाएँ (<span id="kfCountLbl">0</span>)</button>
+            </div>
+            <div class="row-2" style="margin-top:4px;">
+              <label class="field">✍️ पेन टूल
+                <select id="drawTool">
+                  <option value="PEN">पेन (Freehand)</option>
+                  <option value="ARROW">तीर ↗ (Arrow)</option>
+                  <option value="CIRCLE">गोला ⭕ (Circle)</option>
+                  <option value="RECT">बॉक्स 🔲 (Rectangle)</option>
+                </select>
+              </label>
+              <label class="field">पेन रंग
+                <select id="drawColor">
+                  <option value="#ef4444">🔴 लाल (Red)</option>
+                  <option value="#ffd54f">🟡 पीला (Gold)</option>
+                  <option value="#00e676">🟢 हरा (Green)</option>
+                  <option value="#00e5ff">🔵 नीला (Cyan)</option>
+                  <option value="#ffffff">⚪ सफ़ेद (White)</option>
+                </select>
+              </label>
+            </div>
+            <div class="row-2">
+              <button class="btn" onclick="document.getElementById('btnToggleDraw').click()">✍️ स्क्रीन ड्रॉ चालू/बंद</button>
+              <button class="btn" id="btnClearDraw">🧹 ड्राइंग साफ़ करें</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">📐 एक्सपोर्ट रिज़ॉल्यूशन व FPS</div>
+            <div class="row-2">
+              <label class="field">रिज़ॉल्यूशन
+                <select id="exportRes">
+                  <option value="480p">480p SD (तेज़)</option>
+                  <option value="720p" selected>720p HD (स्टैंडर्ड)</option>
+                  <option value="1080p">1080p Full HD</option>
+                </select>
+              </label>
+              <label class="field">फ़्रेम रेट (FPS)
+                <select id="exportFps">
+                  <option value="24">24 FPS (सिनेमा)</option>
+                  <option value="30" selected>30 FPS (टीवी)</option>
+                  <option value="60">60 FPS (स्मूथ)</option>
+                </select>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 4: VN PRO TOOLS (COMPLETE SUITE) -->
+        <div class="tab-panel" id="tab-vn" style="display:none;">
+          <div class="card">
+            <div class="card-title">⚡ VN ट्रांसफ़ॉर्म, रिवर्स, फ्रीज़ व स्पीड कर्व</div>
+            <div class="row-3">
+              <button class="btn" id="btnRotate90">🔄 रोटेट (<span id="rotLbl">0°</span>)</button>
+              <button class="btn" id="btnMirror">↔️ मिरर</button>
+              <button class="btn" id="btnFlip">↕️ फ्लिप</button>
+            </div>
+            <div class="row-3">
+              <button class="btn" id="btnFreeze">❄️ फ्रीज़</button>
+              <button class="btn" id="btnReverse">⏪ रिवर्स</button>
+              <button class="btn" id="btnSplitClip">✂️ स्प्लिट कट</button>
+            </div>
+            <label class="field">VN स्पीड कर्व (All 7 Speed Curves)
+              <select id="speedCurve">
+                <option value="NONE">सामान्य (Normal)</option>
+                <option value="MONTAGE">🎬 मोंटाज (Montage)</option>
+                <option value="HERO">🦸 हीरो रैंप (Hero)</option>
+                <option value="BULLET">⚡ बुलेट स्लो (Bullet)</option>
+                <option value="JUMP_CUT">✂️ जंप कट (Jump)</option>
+                <option value="FLASH_IN">🚀 फ़्लैश इन (Flash In)</option>
+                <option value="FLASH_OUT">🌠 फ़्लैश आउट (Flash Out)</option>
+              </select>
+            </label>
+            <svg id="speedCurveSvg" viewBox="0 0 300 46" style="width:100%;height:46px;background:#09101f;border-radius:7px;border:1px solid rgba(0,229,255,0.28);">
+              <line x1="0" y1="25" x2="300" y2="25" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>
+              <path id="speedCurvePath" d="M 0 25 L 150 25 L 300 25" fill="none" stroke="#00e5ff" stroke-width="3" stroke-linecap="round"/>
+            </svg>
+          </div>
+
+          <div class="card">
+            <div class="card-title">🎨 फ़िल्टर LUT, VFX व एनिमेशन फ़िल्टर</div>
+            <div class="row-2">
+              <label class="field">LUT कलर फ़िल्टर (16 Presets)
+                <select id="filterPreset">
+                  <option value="NONE">सामान्य (Original)</option>
+                  <option value="VIVID">✨ वाइब्रेंट प्रो (Vivid)</option>
+                  <option value="BREAKING_ALERT">🚨 ब्रेकिंग रेड</option>
+                  <option value="CINE_TEAL">🎥 टील &amp; ऑरेंज LUT</option>
+                  <option value="CINEMA">🎬 सिनेमा गोल्ड</option>
+                  <option value="MOODY_NEWS">🌑 मूडी न्यूज़ डॉक</option>
+                  <option value="WARM_VLOG">☀️ वार्म व्लॉग</option>
+                  <option value="WARM">🔥 वॉर्म स्टूडियो</option>
+                  <option value="FRESH_DAY">🌿 फ्रेश डेलाइट</option>
+                  <option value="COOL_STUDIO">❄️ कूल स्टूडियो</option>
+                  <option value="GOLDEN_HOUR">🌅 गोल्डन आवर</option>
+                  <option value="NIGHT_VISION">🟢 नाइट विज़न</option>
+                  <option value="VINTAGE">🎞️ रेट्रो विंटेज</option>
+                  <option value="CYBER">🌐 साइबर टेक</option>
+                  <option value="SAFFRON">🟠 केसरिया भारत</option>
+                  <option value="DRAMATIC">🎭 ड्रामेटिक</option>
+                  <option value="BW">🖤 ब्लैक एंड व्हाइट</option>
+                </select>
+              </label>
+              <label class="field">विज़ुअल VFX ओवरले (7)
+                <select id="activeVfx">
+                  <option value="NONE">बंद (None)</option>
+                  <option value="SCANLINES">📺 CRT स्कैनलाइन्स</option>
+                  <option value="FLASH_STROBE">⚡ स्ट्रोब फ़्लैश</option>
+                  <option value="VIGNETTE">🌑 ड्रामेटिक विग्नेट</option>
+                  <option value="EMERGENCY_SIREN">🚨 इमरजेंसी सायरन</option>
+                  <option value="GLITCH">👾 डिजिटल टीवी ग्लिच</option>
+                  <option value="RAIN_STORM">🌧️ बारिश अलर्ट</option>
+                </select>
+              </label>
+            </div>
+            <label class="field">✨ एनिमेशन फ़िल्टर (Animated Filters)
+              <select id="animFilter">
+                <option value="NONE">कोई नहीं (None)</option>
+                <option value="NEON_PULSE_WAVE">💜 निऑन वेव (Neon Pulse)</option>
+                <option value="GOLDEN_SPARKLE">✨ गोल्डन स्पार्कल (Sparkle)</option>
+                <option value="LIGHT_LEAK_SWEEP">🌟 लाइट लीक (Light Leak)</option>
+                <option value="VHS_RETRO_WAVE">📼 रेट्रो VHS (VHS Wave)</option>
+                <option value="PRISM_AURORA">🌈 प्रिज्म ऑरोरा (Prism Aurora)</option>
+                <option value="CYBER_MATRIX">💚 साइबर मैट्रिक्स (Matrix)</option>
+                <option value="FIRE_EMBERS">🔥 फायर एम्बर्स (Fire Embers)</option>
+                <option value="SNOW_FALL">❄️ स्नो फॉल (Snow Fall)</option>
+              </select>
+            </label>
+            <div class="row-2">
+              <label class="field">सैचुरेशन (<span id="satLbl">100%</span>)
+                <input type="range" id="saturation" min="0" max="200" value="100" />
+              </label>
+              <label class="field">वॉर्म / तापमान (<span id="warmthLbl">0</span>)
+                <input type="range" id="vnWarmth" min="-50" max="50" value="0" />
+              </label>
+              <label class="field">विग्नेट (<span id="vignetteLbl">0%</span>)
+                <input type="range" id="vnVignette" min="0" max="100" value="0" />
+              </label>
+              <label class="field">शार्पनेस (<span id="sharpenLbl">0%</span>)
+                <input type="range" id="vnSharpen" min="0" max="100" value="0" />
+              </label>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">🖼️ BG थीम, बॉर्डर, मोशन FX व मास्क</div>
+            <div class="row-2">
+              <label class="field">वर्चुअल स्टूडियो बैकग्राउंड
+                <select id="virtualTheme">
+                  <option value="GLOBE_SPIN">🌐 3D ग्लोब न्यूज़ रूम</option>
+                  <option value="BREAKING_BEAMS">⚡ ब्रेकिंग रेड बीम्स</option>
+                  <option value="DIGITAL_STUDIO">💻 डिजिटल स्टूडियो ग्रिड</option>
+                  <option value="GOLDEN_LUXURY">✨ गोल्डन बुलेटिन</option>
+                </select>
+              </label>
+              <label class="field">BG स्टाइल फ़िल
+                <select id="vnBgStyle">
+                  <option value="BLACK">⬛ काला (Black)</option>
+                  <option value="NAVY_STUDIO">🟦 न्यूज़ नेवी</option>
+                  <option value="CRIMSON_NEWS">🟥 क्रिमसन रेड</option>
+                  <option value="GOLD_ROYAL">🟨 गोल्ड रॉयल</option>
+                  <option value="GRADIENT_DARK">🌌 डार्क ग्रेडिएंट</option>
+                </select>
+              </label>
+            </div>
+            <div class="row-2">
+              <label class="field">बॉर्डर मोटाई (<span id="borderLbl">0px</span>)
+                <input type="range" id="borderWidth" min="0" max="24" value="0" />
+              </label>
+              <label class="field">बॉर्डर रंग
+                <select id="vnBorderColor">
+                  <option value="#ffd54f">🟡 सुनहरा (Gold)</option>
+                  <option value="#ffffff">⚪ सफ़ेद (White)</option>
+                  <option value="#ff1744">🔴 लाल (Red)</option>
+                  <option value="#00e5ff">🔵 सियान (Cyan)</option>
+                  <option value="#00e676">🟢 हरा (Green)</option>
+                </select>
+              </label>
+            </div>
+            <div class="row-3">
+              <label class="field">VN मोशन FX
+                <select id="motionFx">
+                  <option value="NONE">कोई नहीं</option>
+                  <option value="SHAKE">📳 शेक</option>
+                  <option value="JITTER">⚡ जिटर</option>
+                  <option value="PULSE">🔍 ज़ूम पल्स</option>
+                  <option value="EXPANSION">💥 एक्सपैंड</option>
+                  <option value="FLASH_CUT">⚡ फ़्लैश कट</option>
+                </select>
+              </label>
+              <label class="field">VN मास्क आकार
+                <select id="vnMask">
+                  <option value="NONE">कोई नहीं</option>
+                  <option value="LINEAR">▤ लीनियर</option>
+                  <option value="MIRROR">◫ मिरर स्लिट</option>
+                  <option value="RADIAL">⭕ स्पॉटलाइट</option>
+                  <option value="RECTANGLE">▬ सिनेमा बार्स</option>
+                </select>
+              </label>
+              <label class="field">ओपैसिटी (<span id="opacityLbl">100%</span>)
+                <input type="range" id="vnOpacity" min="20" max="100" value="100" />
+              </label>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">✂️ वीडियो क्रॉप टूल्स (Ratio, Zoom, Pan &amp; 4-Edges)</div>
+            <div class="row-2">
+              <label class="field">क्रॉप अनुपात
+                <select id="cropPreset">
+                  <option value="FREE">फ़ुल फ़्रेम (Free / Full)</option>
+                  <option value="1:1">1:1 स्क्वायर</option>
+                  <option value="4:5">4:5 पोर्ट्रेट</option>
+                  <option value="9:16">9:16 वर्टिकल Reels</option>
+                  <option value="4:3">4:3 टीवी क्लासिक</option>
+                  <option value="21:9">21:9 सिनेमा वाइड</option>
+                </select>
+              </label>
+              <label class="field">क्रॉप ज़ूम (<span id="cropZoomLbl">1.00x</span>)
+                <input type="range" id="cropZoom" min="1.0" max="3.0" step="0.05" value="1.0" />
+              </label>
+            </div>
+            <div class="row-2">
+              <label class="field">बाएँ-दाएँ पैन (<span id="cropPanXLbl">0%</span>)
+                <input type="range" id="cropPanX" min="-1.0" max="1.0" step="0.02" value="0" />
+              </label>
+              <label class="field">ऊपर-नीचे पैन (<span id="cropPanYLbl">0%</span>)
+                <input type="range" id="cropPanY" min="-1.0" max="1.0" step="0.02" value="0" />
+              </label>
+            </div>
+            <div class="row-2">
+              <label class="field">बायाँ कट (<span id="cropLeftLbl">0%</span>)
+                <input type="range" id="cropLeft" min="0" max="0.4" step="0.01" value="0" />
+              </label>
+              <label class="field">दायाँ कट (<span id="cropRightLbl">0%</span>)
+                <input type="range" id="cropRight" min="0" max="0.4" step="0.01" value="0" />
+              </label>
+              <label class="field">ऊपरी कट (<span id="cropTopLbl">0%</span>)
+                <input type="range" id="cropTop" min="0" max="0.4" step="0.01" value="0" />
+              </label>
+              <label class="field">निचला कट (<span id="cropBottomLbl">0%</span>)
+                <input type="range" id="cropBottom" min="0" max="0.4" step="0.01" value="0" />
+              </label>
+            </div>
+            <button class="btn" id="btnResetCrop">↺ क्रॉप रीसेट करें</button>
+          </div>
+
+          <div class="card">
+            <div class="card-title">💬 VN सबटाइटल, स्टाइल व बीट मार्कर</div>
+            <div class="row-2">
+              <label class="field">VN सबटाइटल / कैप्शन
+                <input type="text" id="vnSubtitle" placeholder="यहाँ वीडियो सबटाइटल लिखें..." />
+              </label>
+              <label class="field">सबटाइटल स्टाइल
+                <select id="vnSubtitleStyle">
+                  <option value="CINE">🎬 सिनेमा ब्लैक</option>
+                  <option value="NEWS_BAR">🔴 न्यूज़ रेड</option>
+                  <option value="YELLOW_BOLD">🟡 येलो बोल्ड</option>
+                  <option value="MINIMAL">✨ मिनिमल</option>
+                </select>
+              </label>
+            </div>
+            <div class="switch-row"><span>🎵 टाइमलाइन बीट मार्कर</span><input type="checkbox" id="beatMarkers" checked /></div>
+            <button class="btn" id="btnResetVn">↺ सभी VN टूल्स रीसेट करें</button>
+          </div>
+        </div>
+
+        <!-- TAB 5: CHATGPT VOICE EFFECTS, VOICE CHANGER, MIC & 5-SFX SOUNDBOARD -->
+        <div class="tab-panel" id="tab-audio" style="display:none;">
+          <div class="card" style="border-color:rgba(0,229,255,0.45);">
+            <div class="card-title" style="color:var(--news-cyan);">🤖 ChatGPT AI वॉइस इफ़ेक्ट्स (ChatGPT Voice Modes)</div>
+            <div class="chip-row" id="chatGptVoiceChips">
+              <button class="chip chatgpt" data-voice="CHATGPT_COVE">💬 ChatGPT Cove</button>
+              <button class="chip chatgpt" data-voice="CHATGPT_BREEZE">🌬️ ChatGPT Breeze</button>
+              <button class="chip chatgpt" data-voice="CHATGPT_EMBER">🔥 ChatGPT Ember</button>
+              <button class="chip chatgpt" data-voice="CHATGPT_JUNIPER">🎙️ ChatGPT Juniper</button>
+              <button class="chip chatgpt" data-voice="CHATGPT_SKY">✨ ChatGPT Sky</button>
+              <button class="chip chatgpt" data-voice="CHATGPT_SOL">☀️ ChatGPT Sol</button>
+            </div>
+            <label class="field">सक्रिय वॉइस इफ़ेक्ट (ChatGPT + Studio Classic)
+              <select id="voiceEffect">
+                <option value="NORMAL">🎙️ सामान्य (Normal)</option>
+                <option value="CHATGPT_COVE">💬 ChatGPT Cove (गहरी शांत AI आवाज़)</option>
+                <option value="CHATGPT_BREEZE">🌬️ ChatGPT Breeze (फ्रेंडली AI आवाज़)</option>
+                <option value="CHATGPT_EMBER">🔥 ChatGPT Ember (दमदार AI एंकर)</option>
+                <option value="CHATGPT_JUNIPER">🎙️ ChatGPT Juniper (साफ़ व एक्सप्रेसिव AI)</option>
+                <option value="CHATGPT_SKY">✨ ChatGPT Sky (स्मूद असिस्टेंट AI)</option>
+                <option value="CHATGPT_SOL">☀️ ChatGPT Sol (प्रोफेशनल न्यूज़ AI)</option>
+                <option value="DEEP_ANCHOR">📻 डीप एंकर (Deep Bass)</option>
+                <option value="FEMALE_ANCHOR">🎤 फीमेल एंकर (Crisp High)</option>
+                <option value="RADIO_MIC">📡 रेडियो माइक (Broadcast)</option>
+                <option value="ECHO_STUDIO">🏛️ इको स्टूडियो (Hall Echo)</option>
+                <option value="CHIPMUNK">🐿️ चिपमंक (Chipmunk)</option>
+                <option value="ROBOT">🤖 रोबोट (Robot Cyber)</option>
+                <option value="MEGAPHONE">📢 मेगाफोन (Loudhorn)</option>
+                <option value="SLOW_CINEMA">🎬 स्लो सिनेमा (Dramatic)</option>
+              </select>
+            </label>
+            <label class="field">वॉइस पिच (Pitch: <span id="voicePitchLbl">1.00x</span>)
+              <input type="range" id="voicePitch" min="0.5" max="1.8" step="0.05" value="1.0" />
+            </label>
+            <div class="row-2">
+              <button class="btn" id="btnTestVoice">🔊 वॉइस इफ़ेक्ट टेस्ट</button>
+              <button class="btn btn-cyan" id="btnMicVoiceFx">🎤 लाइव माइक वॉइस चेंजर</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">🗣️ ChatGPT वॉइस से हिंदी न्यूज़ बुलवाएँ (AI Voiceover)</div>
+            <label class="field">बोलने के लिए टेक्स्ट (खाली = मुख्य हेडलाइन बोली जाएगी)
+              <textarea id="aiTtsInput" rows="2" placeholder="यहाँ समाचार वाक्य लिखें या सीधे बोलें बटन दबाएँ..."></textarea>
+            </label>
+            <div class="row-2">
+              <button class="btn btn-primary" id="btnSpeakChatGpt">🗣️ ChatGPT वॉइस से बोलें</button>
+              <button class="btn" id="btnStopSpeak">⏹️ बोलना रोकें</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">🔊 ऑडियो मिक्सर (200% Boost, Ducking &amp; Fade)</div>
+            <label class="field">मास्टर वॉल्यूम बूस्ट (<span id="volBoostLbl">100%</span>)
+              <input type="range" id="audioVolumeBoost" min="0" max="200" value="100" />
+            </label>
+            <div class="row-2">
+              <div class="switch-row"><span>🎙️ ऑटो-डकिंग</span><input type="checkbox" id="audioAutoDucking" checked /></div>
+              <div class="switch-row"><span>🔇 वीडियो म्यूट</span><input type="checkbox" id="muteVideo" /></div>
+              <div class="switch-row"><span>🎵 फेड-इन</span><input type="checkbox" id="audioFadeIn" checked /></div>
+              <div class="switch-row"><span>🎵 फेड-आउट</span><input type="checkbox" id="audioFadeOut" checked /></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">🚨 न्यूज़ ब्रॉडकास्ट साउंडबोर्ड (5 SFX)</div>
+            <div class="row-2">
+              <button class="btn btn-red" id="btnSfxStinger">🚨 ब्रेकिंग स्टिंगर</button>
+              <button class="btn" id="btnSfxAlert">🔔 अलर्ट सायरन</button>
+              <button class="btn" id="btnSfxTicker">📟 टिकर बीप</button>
+              <button class="btn" id="btnSfxMic">🎙️ माइक चाइम</button>
+            </div>
+            <button class="btn btn-primary" id="btnSfxCountdown">⏱️ काउंटडाउन बीप (3-2-1 LIVE!)</button>
+          </div>
+        </div>
+
+        <!-- TAB 6: MEDIA, SAVED PROJECTS & SHORTCUTS -->
+        <div class="tab-panel" id="tab-mediasave" style="display:none;">
+          <div class="card">
+            <div class="card-title">📁 मीडिया स्रोत व एक्सपोर्ट मेनू</div>
+            <div class="row-2">
+              <button class="btn btn-primary" onclick="document.getElementById('mediaInput').click()">📁 मुख्य वीडियो/फ़ोटो</button>
+              <button class="btn" onclick="document.getElementById('secondaryMediaInput').click()">🖼️ PIP/Split मीडिया</button>
+            </div>
+            <div class="row-2">
+              <button class="btn" onclick="document.getElementById('btnWebcam').click()">📷 लाइव वेबकैम</button>
+              <button class="btn" id="btnClearMedia">🧹 वर्चुअल स्टूडियो दिखाएँ</button>
+            </div>
+            <button class="btn" onclick="document.getElementById('btnSnapshot').click()">📸 HD पोस्टर PC में सेव करें</button>
+            <button class="btn btn-save" onclick="document.getElementById('btnExportVideo').click()">⚡ एडिटेड वीडियो PC में सेव करें (2 घंटे तक)</button>
+            <button class="btn" onclick="document.getElementById('btnLockPc').click()">🔒 पासवर्ड लॉक लगाएँ</button>
+          </div>
+
+          <div class="card">
+            <div class="card-title">📂 सहेजे गए प्रोजेक्ट्स (Saved Projects)</div>
+            <div class="row-2">
+              <input type="text" id="projectTitleInput" placeholder="प्रोजेक्ट का नाम..." value="मेरा न्यूज़ बुलेटिन" />
+              <button class="btn btn-save" id="btnSaveProjectLocal">💾 प्रोजेक्ट सेव करें</button>
+            </div>
+            <div id="savedProjectsList" style="display:flex;flex-direction:column;gap:5px;max-height:160px;overflow-y:auto;"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">⌨️ PC कीबोर्ड शॉर्टकट</div>
+            <div style="font-size:11px;color:var(--text-muted);line-height:1.6;">
+              <b>Space</b>: Play/Pause &bull; <b>S</b>: HD पोस्टर सेव &bull; <b>E</b>: वीडियो एक्सपोर्ट शुरू/रोकें<br/>
+              <b>Ctrl+Z</b>: Undo &bull; <b>Ctrl+Y</b>: Redo
+            </div>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <footer class="pc-footer" id="pcPoweredByFooter">Powered by Raikwar ji</footer>
+
+  <div class="toast" id="toast"></div>
+
+  <video id="sourceVideo" playsinline loop muted style="display:none;"></video>
+  <video id="secondaryVideo" playsinline loop muted style="display:none;"></video>
+
+  <script>
+    const canvas = document.getElementById('studioCanvas');
+    const ctx = canvas.getContext('2d');
+    const chromaCanvas = document.createElement('canvas');
+    const chromaCtx = chromaCanvas.getContext('2d', { willReadFrequently: true });
+    const videoEl = document.getElementById('sourceVideo');
+    const secVideoEl = document.getElementById('secondaryVideo');
+    let sourceImg = null;
+    let secondaryImg = null;
+    let customLogoImg = null;
+    let webcamStream = null;
+    let micStream = null;
+    let micSourceNode = null;
+    let isPlaying = true;
+    let isFrozen = false;
+    let isReversed = false;
+    let rotationDeg = 0;
+    let mirrorH = false;
+    let flipV = false;
+    let splitPct = null;
+    let mediaRecorder = null;
+    let recordedChunks = [];
+    let recInterval = null;
+    let recSec = 0;
+    let tickerX = 1280;
+    let targetDurationSec = 10;
+    let virtualClockSec = 0;
+    let lastTime = performance.now();
+
+    let drawMode = false;
+    let drawnStrokes = [];
+    let currentDrawPts = [];
+    let keyframes = [];
+
+    const state = {
+      aspect: '16:9',
+      activeStickers: new Set(['LIVE']),
+      offsets: {
+        logo: { x: 0, y: 0 },
+        live: { x: 0, y: 0 },
+        headline: { x: 0, y: 0 },
+        ticker: { x: 0, y: 0 },
+        meta: { x: 0, y: 0 },
+        reporter: { x: 0, y: 0 },
+        stickers: { x: 0, y: 0 }
+      },
+      hitBoxes: {}
+    };
+
+    const HEADLINE_TEMPLATES = [
+      { category: 'बड़ी ख़बर', headline: 'बड़ा प्रशासनिक फेरबदल: वरिष्ठ अधिकारियों के तबादले', sub: 'शासन ने तत्काल प्रभाव से जारी किए आदेश, नए दायित्व सौंपे', ticker: 'ताज़ा ख़बर: प्रशासनिक स्तर पर व्यापक फेरबदल • कई जिलों के अधिकारियों को नई जिम्मेदारियां सौंपी गईं' },
+      { category: 'ब्रेकिंग न्यूज़', headline: 'मौसम विभाग की भारी बारिश की चेतावनी: कई जिलों में रेड अलर्ट', sub: 'प्रशासन ने जारी की एडवाइजरी, स्कूल बंद रखने के दिए निर्देश', ticker: 'मौसम अलर्ट: अगले 24 घंटों में भारी बारिश की संभावना • नदियों का जलस्तर बढ़ा, राहत दल तैनात' },
+      { category: 'विशेष ख़बर', headline: 'हाईवे पर बड़ा हादसा टला: सूझबूझ से बचीं सैकड़ों जानें', sub: 'ड्राइवर ने दिखाई हिम्मत, यात्रियों ने ली राहत की सांस', ticker: 'हादसा टला: नेशनल हाईवे पर बस का टायर फटने के बाद चालक ने सूझबूझ से बस को रोका • सभी यात्री सुरक्षित' },
+      { category: 'ग्राउंड रिपोर्ट', headline: 'सड़कों की खस्ता हालत पर फूटा जनता का गुस्सा, सड़क जाम', sub: 'सालों से अधर में लटका निर्माण कार्य, ग्रामीणों ने दी चेतावनी', ticker: 'ग्राउंड रिपोर्ट: मुख्य मार्ग पर गड्ढों से आवागमन बाधित • अधिकारियों ने दिया 15 दिन में समाधान का आश्वासन' },
+      { category: 'राजनीति', headline: 'विधानसभा चुनाव को लेकर राजनीतिक सरगर्मी तेज, प्रचार चरम पर', sub: 'शीर्ष नेताओं के धुआंधार दौरे शुरू, जनता से किए जा रहे बड़े वादे', ticker: 'सियासी घमासान: सभी प्रमुख दलों ने झोंकी पूरी ताकत • जनसभाओं में उमड़ी भारी भीड़' },
+      { category: 'सुपरफास्ट 100', headline: 'देश और दुनिया की 100 बड़ी ख़बरें: फटाफट अंदाज़ में', sub: 'हर बड़ी घटना पर हमारी पैनी नज़र, पल-पल की ताज़ा अपडेट', ticker: 'सुपरफास्ट न्यूज़: विकास कार्यों की समीक्षा बैठक संपन्न • किसानों के खाते में सम्मान निधि की किस्त जारी' },
+      { category: 'खेल जगत', headline: 'रोमांचक मुकाबले में भारत की ऐतिहासिक जीत, जश्न का माहौल', sub: 'अंतिम गेंद पर ठोका विजयी शॉट, फैंस ने फोड़े पटाखे', ticker: 'क्रिकेट स्पेशल: भारतीय टीम का शानदार प्रदर्शन • देश भर में जश्न का माहौल' },
+      { category: 'शिक्षा व रोज़गार', headline: 'नई भर्ती परीक्षा की तिथियां घोषित, लाखों अभ्यर्थियों को राहत', sub: 'आयोग की आधिकारिक वेबसाइट पर जारी हुआ पूरा शेड्यूल', ticker: 'रोज़गार समाचार: आगामी माह से शुरू होंगी परीक्षाएं • प्रवेश पत्र जल्द होंगे डाउनलोड' }
+    ];
+
+    const TELEPROMPTER_SCRIPTS = [
+      { label: '📺 मुख्य बुलेटिन', text: 'नमस्कार! आप देख रहे हैं हर खबर H.K NEWS, और मैं हूँ आपका संवाददाता। आज की सबसे बड़ी ख़बर के साथ बुलेटिन की शुरुआत करते हैं। राजधानी से आ रही बड़ी जानकारी के अनुसार, शासन ने आज एक महत्वपूर्ण नीतिगत फैसला लिया है जिससे आम नागरिकों को सीधा लाभ मिलेगा।' },
+      { label: '🎤 ग्राउंड ज़ीरो', text: 'जी हाँ, इस वक्त मैं मौजूद हूँ सीधे घटनास्थल पर। मेरे पीछे आप देख सकते हैं कि प्रशासन की टीमें मौके पर पहुंच चुकी हैं और स्थिति को पूरी तरह नियंत्रण में ले लिया गया है। स्थानीय नागरिकों से बात करते हैं।' },
+      { label: '🚨 ब्रेकिंग अलर्ट', text: 'इस वक्त की सबसे बड़ी ख़बर! दर्शकों, सीधा रुख करते हैं ताज़ा अपडेट की ओर। सूत्रों के हवाले से बड़ी जानकारी सामने आ रही है। उच्च स्तरीय बैठक अभी समाप्त हुई है, जुड़े रहिए H.K NEWS के साथ।' }
+    ];
+
+    const STICKER_DEFS = [
+      ['LIVE', '🔴 LIVE'],
+      ['EXCLUSIVE', '⭐ विशेष ख़बर'],
+      ['BIG_BREAKING', '🚨 बड़ा खुलासा'],
+      ['GROUND_ZERO', '🎤 ग्राउंड ज़ीरो'],
+      ['VIRAL', '⚡ वायरल वीडियो'],
+      ['WEATHER_ALERT', '🌧️ मौसम अलर्ट'],
+      ['ELECTION_SPECIAL', '🏛️ चुनाव विशेष']
+    ];
+
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.style.display = 'block';
+      clearTimeout(window.__toastT);
+      window.__toastT = setTimeout(() => { t.style.display = 'none'; }, 3500);
+    }
+
+    // Undo / Redo History Snapshot System
+    const SNAP_FIELDS = [
+      'channelName','channelTagline','category','helplineNumber','headline','subHeadline','tickerTagText','liveBadgeText',
+      'tickerText','reporterName','reporterRole','location','manualClockText','logoType','logoPosition','logoAnim',
+      'logoScale','logoOpacity','headlineAnim','headlinePos','tickerAnim','tickerPos','tickerSpeed',
+      'headlineScale','tickerScale','reporterScale','badgeScale','chromaColor','chromaSimilarity','layoutMode',
+      'inAnim','outAnim','activeTransition','pzStartScale','pzEndScale','playbackSpeed','brightness','contrast',
+      'exportRes','exportFps','speedCurve','filterPreset','activeVfx','animFilter','saturation','vnWarmth',
+      'vnVignette','vnSharpen','virtualTheme','vnBgStyle','borderWidth','vnBorderColor','motionFx','vnMask',
+      'vnOpacity','cropPreset','cropZoom','cropPanX','cropPanY','cropLeft','cropRight','cropTop','cropBottom',
+      'vnSubtitle','vnSubtitleStyle','voiceEffect','voicePitch','audioVolumeBoost','trimStart','trimEnd'
+    ];
+    const SNAP_CHECKS = [
+      'showTeleprompter','showLogo','showLive','showHeadline','showTicker','showLocation','showMeta','showReporter',
+      'showStickers','chromaEnabled','panZoom','panZoomLock','beatMarkers','audioAutoDucking','muteVideo','audioFadeIn','audioFadeOut'
+    ];
+    let undoStack = [];
+    let redoStack = [];
+    function captureProjectSnapshot() {
+      const snap = { fields: {}, checks: {}, aspect: state.aspect, rot: rotationDeg, mirrorH, flipV, isFrozen, isReversed, splitPct, stickers: Array.from(state.activeStickers), offsets: JSON.parse(JSON.stringify(state.offsets)) };
+      SNAP_FIELDS.forEach(id => { const el = document.getElementById(id); if (el) snap.fields[id] = el.value; });
+      SNAP_CHECKS.forEach(id => { const el = document.getElementById(id); if (el) snap.checks[id] = el.checked; });
+      return snap;
+    }
+    function applyProjectSnapshot(snap) {
+      if (!snap) return;
+      Object.entries(snap.fields || {}).forEach(([id, val]) => {
+        const el = document.getElementById(id);
+        if (el) { el.value = val; el.dispatchEvent(new Event('input')); }
+      });
+      Object.entries(snap.checks || {}).forEach(([id, chk]) => {
+        const el = document.getElementById(id);
+        if (el) el.checked = !!chk;
+      });
+      rotationDeg = snap.rot || 0;
+      document.getElementById('rotLbl').textContent = rotationDeg + '°';
+      mirrorH = !!snap.mirrorH;
+      flipV = !!snap.flipV;
+      isFrozen = !!snap.isFrozen;
+      isReversed = !!snap.isReversed;
+      splitPct = snap.splitPct ?? null;
+      document.getElementById('splitPin').style.display = splitPct === null ? 'none' : 'block';
+      if (splitPct !== null) document.getElementById('splitPin').style.left = splitPct + '%';
+      if (snap.offsets) state.offsets = JSON.parse(JSON.stringify(snap.offsets));
+      if (snap.stickers) { state.activeStickers = new Set(snap.stickers); renderStickerChips(); }
+      if (snap.aspect) setAspectRatio(snap.aspect);
+      applyWebAudioVoiceChain();
+      renderBeatMarkers();
+    }
+    function pushUndo() {
+      undoStack.push(captureProjectSnapshot());
+      if (undoStack.length > 25) undoStack.shift();
+      redoStack = [];
+      refreshUndoButtons();
+    }
+    function refreshUndoButtons() {
+      document.getElementById('btnUndo').disabled = undoStack.length === 0;
+      document.getElementById('btnRedo').disabled = redoStack.length === 0;
+    }
+    document.getElementById('btnUndo').addEventListener('click', () => {
+      if (!undoStack.length) return;
+      redoStack.push(captureProjectSnapshot());
+      applyProjectSnapshot(undoStack.pop());
+      refreshUndoButtons();
+      showToast('↩️ पिछला बदलाव वापस (Undo)');
+    });
+    document.getElementById('btnRedo').addEventListener('click', () => {
+      if (!redoStack.length) return;
+      undoStack.push(captureProjectSnapshot());
+      applyProjectSnapshot(redoStack.pop());
+      refreshUndoButtons();
+      showToast('↪️ बदलाव पुनः लागू (Redo)');
+    });
+
+    // Tabs
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-panel').forEach(p => p.style.display = 'none');
+        btn.classList.add('active');
+        document.getElementById('tab-' + btn.dataset.tab).style.display = 'block';
+      });
+    });
+
+    // Populate Templates & Teleprompter & Stickers
+    (function initTemplatesAndStickers() {
+      const tplBox = document.getElementById('headlineTemplatesList');
+      HEADLINE_TEMPLATES.forEach(t => {
+        const div = document.createElement('div');
+        div.className = 'tpl-item';
+        div.innerHTML = `<div style="min-width:0;"><div style="font-size:10px;color:#ffb300;font-weight:800;">${t.category}</div><div style="font-size:11px;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${t.headline}</div></div><span style="color:#ffd54f;font-size:11px;font-weight:800;">लागू ✓</span>`;
+        div.addEventListener('click', () => {
+          pushUndo();
+          document.getElementById('category').value = t.category;
+          document.getElementById('headline').value = t.headline;
+          document.getElementById('subHeadline').value = t.sub;
+          document.getElementById('tickerText').value = t.ticker;
+          showToast('📋 टेम्पलेट लागू: ' + t.category);
+        });
+        tplBox.appendChild(div);
+      });
+
+      const tpRow = document.getElementById('teleprompterPresetsRow');
+      TELEPROMPTER_SCRIPTS.forEach(s => {
+        const b = document.createElement('button');
+        b.className = 'chip';
+        b.textContent = s.label;
+        b.addEventListener('click', () => {
+          pushUndo();
+          document.getElementById('teleprompterText').value = s.text;
+          document.getElementById('showTeleprompter').checked = true;
+          showToast('📜 प्रॉम्प्टर स्क्रिप्ट लोड: ' + s.label);
+        });
+        tpRow.appendChild(b);
+      });
+    })();
+
+    function renderStickerChips() {
+      const row = document.getElementById('stickersRow');
+      row.innerHTML = '';
+      STICKER_DEFS.forEach(([tag, lbl]) => {
+        const c = document.createElement('button');
+        c.className = 'chip' + (state.activeStickers.has(tag) ? ' active' : '');
+        c.textContent = lbl;
+        c.addEventListener('click', () => {
+          pushUndo();
+          if (state.activeStickers.has(tag)) state.activeStickers.delete(tag);
+          else state.activeStickers.add(tag);
+          renderStickerChips();
+        });
+        row.appendChild(c);
+      });
+    }
+    renderStickerChips();
+
+    // Aspect Ratio
+    function setAspectRatio(ratio) {
+      state.aspect = ratio;
+      document.querySelectorAll('[data-aspect]').forEach(b => b.classList.toggle('active', b.dataset.aspect === ratio));
+      if (ratio === '9:16') { canvas.width = 720; canvas.height = 1280; }
+      else if (ratio === '1:1') { canvas.width = 960; canvas.height = 960; }
+      else if (ratio === '4:5') { canvas.width = 960; canvas.height = 1200; }
+      else { canvas.width = 1280; canvas.height = 720; }
+      tickerX = canvas.width;
+    }
+    document.querySelectorAll('[data-aspect]').forEach(btn => {
+      btn.addEventListener('click', () => { pushUndo(); setAspectRatio(btn.dataset.aspect); });
+    });
+
+    // Screen Layout Presets (App Parity)
+    document.querySelectorAll('[data-preset]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        pushUndo();
+        document.querySelectorAll('[data-preset]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        Object.keys(state.offsets).forEach(k => { state.offsets[k] = { x: 0, y: 0 }; });
+        const p = btn.dataset.preset;
+        if (p === 'CLASSIC_TV') {
+          setAspectRatio('16:9');
+          document.getElementById('logoPosition').value = 'TOP_LEFT';
+          document.getElementById('headlinePos').value = 'BOTTOM';
+          document.getElementById('tickerPos').value = 'BOTTOM';
+          document.getElementById('showTicker').checked = true;
+          document.getElementById('showHeadline').checked = true;
+        } else if (p === 'BREAKING_FOCUS') {
+          document.getElementById('headlinePos').value = 'CENTER';
+          document.getElementById('headlineAnim').value = 'PULSE_GLOW';
+          document.getElementById('showHeadline').checked = true;
+          document.getElementById('showTicker').checked = true;
+        } else if (p === 'REELS_SHORTS') {
+          setAspectRatio('9:16');
+          document.getElementById('headlinePos').value = 'CENTER';
+          document.getElementById('showTicker').checked = true;
+        } else if (p === 'CLEAN_INTERVIEW') {
+          document.getElementById('showTicker').checked = false;
+          document.getElementById('showHeadline').checked = false;
+          document.getElementById('showReporter').checked = true;
+          document.getElementById('showLogo').checked = true;
+        }
+        showToast('⚡ लेआउट प्रीसेट लागू: ' + btn.textContent);
+      });
+    });
+
+    // Duration Presets (up to 2 Hours)
+    document.querySelectorAll('[data-dur]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('[data-dur]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        targetDurationSec = parseInt(btn.dataset.dur, 10) || 10;
+        showToast('⏱️ प्रोजेक्ट अवधि सेट: ' + formatClockSec(targetDurationSec));
+      });
+    });
+
+    // Beat markers
+    function renderBeatMarkers() {
+      const el = document.getElementById('beatDots');
+      const on = document.getElementById('beatMarkers').checked;
+      el.innerHTML = on ? Array.from({ length: 12 }, () => '<span class="beat-dot"></span>').join('') : '';
+    }
+    renderBeatMarkers();
+    document.getElementById('beatMarkers').addEventListener('change', renderBeatMarkers);
+
+    // Media Upload (Primary, Secondary PIP, Custom Logo)
+    document.getElementById('mediaInput').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      stopWebcam();
+      const url = URL.createObjectURL(file);
+      if (file.type.startsWith('image/')) {
+        videoEl.pause();
+        videoEl.removeAttribute('src');
+        const img = new Image();
+        img.onload = () => { sourceImg = img; showToast('फ़ोटो स्टूडियो में लोड हो गई!'); };
+        img.src = url;
+      } else {
+        sourceImg = null;
+        videoEl.src = url;
+        videoEl.muted = document.getElementById('muteVideo').checked;
+        videoEl.playbackRate = parseFloat(document.getElementById('playbackSpeed').value);
+        applyWebAudioVoiceChain();
+        if (pcAudioCtx && pcAudioCtx.state === 'suspended') pcAudioCtx.resume().catch(() => {});
+        videoEl.play().catch(() => {});
+        isPlaying = true;
+        showToast('वीडियो स्टूडियो में लोड हो गया!');
+      }
+    });
+
+    document.getElementById('secondaryMediaInput').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const url = URL.createObjectURL(file);
+      if (file.type.startsWith('image/')) {
+        secVideoEl.pause(); secVideoEl.removeAttribute('src');
+        const img = new Image();
+        img.onload = () => { secondaryImg = img; if (document.getElementById('layoutMode').value === 'FULLSCREEN') document.getElementById('layoutMode').value = 'PIP_CORNER'; showToast('🖼️ दूसरी फ़ोटो (PIP/Split) लोड हो गई!'); };
+        img.src = url;
+      } else {
+        secondaryImg = null;
+        secVideoEl.src = url;
+        secVideoEl.muted = true;
+        secVideoEl.play().catch(() => {});
+        if (document.getElementById('layoutMode').value === 'FULLSCREEN') document.getElementById('layoutMode').value = 'PIP_CORNER';
+        showToast('🎬 दूसरी वीडियो (PIP/Split) लोड हो गई!');
+      }
+    });
+
+    document.getElementById('logoInput').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const img = new Image();
+      img.onload = () => {
+        customLogoImg = img;
+        document.getElementById('logoType').value = 'CUSTOM_IMAGE';
+        showToast('🖼️ कस्टम चैनल लोगो सेट हो गया!');
+      };
+      img.src = URL.createObjectURL(file);
+    });
+
+    document.getElementById('btnClearMedia').addEventListener('click', () => {
+      stopWebcam();
+      videoEl.pause(); videoEl.removeAttribute('src'); sourceImg = null;
+      showToast('🌐 वर्चुअल न्यूज़ स्टूडियो बैकग्राउंड सक्रिय!');
+    });
+
+    function stopWebcam() {
+      if (webcamStream) {
+        webcamStream.getTracks().forEach(t => t.stop());
+        webcamStream = null;
+        videoEl.srcObject = null;
+      }
+    }
+
+    document.getElementById('btnWebcam').addEventListener('click', async () => {
+      if (webcamStream) {
+        stopWebcam();
+        showToast('वेबकैम बंद कर दिया गया');
+        return;
+      }
+      try {
+        webcamStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        sourceImg = null;
+        videoEl.srcObject = webcamStream;
+        videoEl.muted = true;
+        await videoEl.play();
+        showToast('लाइव वेबकैम शुरू हो गया!');
+      } catch (err) {
+        showToast('वेबकैम अनुमति नहीं मिली: ' + err.message);
+      }
+    });
+
+    document.getElementById('btnPlayPause').addEventListener('click', () => {
+      isPlaying = !isPlaying;
+      if (isPlaying) isFrozen = false;
+      if (pcAudioCtx && pcAudioCtx.state === 'suspended') pcAudioCtx.resume().catch(() => {});
+      if (videoEl.src || videoEl.srcObject) {
+        if (isPlaying) { applyWebAudioVoiceChain(); videoEl.play().catch(() => {}); }
+        else videoEl.pause();
+      }
+    });
+
+    // All 5 Broadcast Soundboard SFX (matching Android NewsAudioEffects)
+    function ensureAc() {
+      const ac = pcAudioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      if (ac.state === 'suspended') ac.resume().catch(() => {});
+      return ac;
+    }
+    function playBreakingStinger() {
+      try {
+        const ac = ensureAc();
+        const freqs = [523.25, 659.25, 783.99, 1046.5];
+        freqs.forEach(f => {
+          const osc = ac.createOscillator(), g = ac.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(f, ac.currentTime);
+          g.gain.setValueAtTime(0.08, ac.currentTime);
+          g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.75);
+          osc.connect(g); g.connect(ac.destination);
+          osc.start(); osc.stop(ac.currentTime + 0.76);
+        });
+      } catch (_) {}
+    }
+    function playAlertSiren() {
+      try {
+        const ac = ensureAc();
+        const osc = ac.createOscillator(), g = ac.createGain();
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(880, ac.currentTime);
+        osc.frequency.setValueAtTime(1174, ac.currentTime + 0.14);
+        osc.frequency.setValueAtTime(880, ac.currentTime + 0.28);
+        g.gain.setValueAtTime(0.12, ac.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.45);
+        osc.connect(g); g.connect(ac.destination);
+        osc.start(); osc.stop(ac.currentTime + 0.46);
+      } catch (_) {}
+    }
+    function playNewsBeep() {
+      try {
+        const ac = ensureAc();
+        const osc = ac.createOscillator(), g = ac.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(1200, ac.currentTime);
+        g.gain.setValueAtTime(0.16, ac.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.14);
+        osc.connect(g); g.connect(ac.destination);
+        osc.start(); osc.stop(ac.currentTime + 0.15);
+      } catch (_) {}
+    }
+    function playMicChime() {
+      try {
+        const ac = ensureAc();
+        const osc = ac.createOscillator(), g = ac.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, ac.currentTime);
+        osc.frequency.setValueAtTime(1318.5, ac.currentTime + 0.12);
+        g.gain.setValueAtTime(0.18, ac.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.26);
+        osc.connect(g); g.connect(ac.destination);
+        osc.start(); osc.stop(ac.currentTime + 0.27);
+      } catch (_) {}
+    }
+    function playCountdownBeep() {
+      try {
+        const ac = ensureAc();
+        const osc = ac.createOscillator(), g = ac.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(1400, ac.currentTime);
+        g.gain.setValueAtTime(0.20, ac.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.38);
+        osc.connect(g); g.connect(ac.destination);
+        osc.start(); osc.stop(ac.currentTime + 0.40);
+      } catch (_) {}
+    }
+
+    document.getElementById('btnSFX').addEventListener('click', () => { playBreakingStinger(); showToast('🚨 ब्रेकिंग न्यूज़ स्टिंगर चलाया गया'); });
+    document.getElementById('btnSfxStinger').addEventListener('click', () => { playBreakingStinger(); showToast('🚨 ब्रेकिंग स्टिंगर SFX'); });
+    document.getElementById('btnSfxAlert').addEventListener('click', () => { playAlertSiren(); showToast('🔔 अलर्ट सायरन SFX'); });
+    document.getElementById('btnSfxTicker').addEventListener('click', () => { playNewsBeep(); showToast('📟 टिकर बीप SFX'); });
+    document.getElementById('btnSfxMic').addEventListener('click', () => { playMicChime(); showToast('🎙️ माइक चाइम SFX'); });
+    document.getElementById('btnSfxCountdown').addEventListener('click', () => { playCountdownBeep(); showToast('⏱️ ऑन-एयर काउंटडाउन बीप'); });
+
+    // Controls bindings
+    const syncSlider = (id, lblId, suffix, mult = 1, fixed = null) => {
+      const el = document.getElementById(id);
+      const update = () => {
+        const v = parseFloat(el.value) * mult;
+        document.getElementById(lblId).textContent = (fixed !== null ? v.toFixed(fixed) : Math.round(v * 100) / 100) + suffix;
+      };
+      el.addEventListener('input', update);
+      update();
+    };
+    syncSlider('tickerSpeed', 'tickerSpeedLbl', 'x', 1, 1);
+    syncSlider('playbackSpeed', 'speedLbl', 'x', 1, 2);
+    syncSlider('brightness', 'brightLbl', '');
+    syncSlider('contrast', 'contrastLbl', '%');
+    syncSlider('saturation', 'satLbl', '%');
+    syncSlider('vnWarmth', 'warmthLbl', '');
+    syncSlider('vnVignette', 'vignetteLbl', '%');
+    syncSlider('vnSharpen', 'sharpenLbl', '%');
+    syncSlider('borderWidth', 'borderLbl', 'px');
+    syncSlider('vnOpacity', 'opacityLbl', '%');
+    syncSlider('tpSpeed', 'tpSpeedLbl', 'x', 1, 1);
+    syncSlider('tpFontSize', 'tpFontLbl', 'px');
+    syncSlider('logoScale', 'logoScaleLbl', '%', 100, 0);
+    syncSlider('logoOpacity', 'logoOpacityLbl', '%', 100, 0);
+    syncSlider('headlineScale', 'headlineScaleLbl', '%', 100, 0);
+    syncSlider('tickerScale', 'tickerScaleLbl', '%', 100, 0);
+    syncSlider('reporterScale', 'reporterScaleLbl', '%', 100, 0);
+    syncSlider('badgeScale', 'badgeScaleLbl', '%', 100, 0);
+    syncSlider('chromaSimilarity', 'chromaSimLbl', '%', 100, 0);
+    syncSlider('pzStartScale', 'pzStartLbl', '%', 100, 0);
+    syncSlider('pzEndScale', 'pzEndLbl', '%', 100, 0);
+    syncSlider('kfScaleInput', 'kfScaleLbl', '%', 100, 0);
+    syncSlider('kfOpacityInput', 'kfOpacityLbl', '%', 100, 0);
+    syncSlider('audioVolumeBoost', 'volBoostLbl', '%');
+    syncSlider('trimStart', 'trimStartLbl', '%');
+    syncSlider('trimEnd', 'trimEndLbl', '%');
+    syncSlider('cropZoom', 'cropZoomLbl', 'x', 1, 2);
+    syncSlider('cropPanX', 'cropPanXLbl', '%', 100, 0);
+    syncSlider('cropPanY', 'cropPanYLbl', '%', 100, 0);
+    syncSlider('cropLeft', 'cropLeftLbl', '%', 100, 0);
+    syncSlider('cropRight', 'cropRightLbl', '%', 100, 0);
+    syncSlider('cropTop', 'cropTopLbl', '%', 100, 0);
+    syncSlider('cropBottom', 'cropBottomLbl', '%', 100, 0);
+    syncSlider('voicePitch', 'voicePitchLbl', 'x', 1, 2);
+
+    document.getElementById('panZoomLock').addEventListener('change', (e) => {
+      if (e.target.checked) {
+        const v = document.getElementById('pzStartScale').value;
+        document.getElementById('pzEndScale').value = v;
+        document.getElementById('pzEndScale').dispatchEvent(new Event('input'));
+      }
+    });
+    document.getElementById('pzStartScale').addEventListener('input', (e) => {
+      if (document.getElementById('panZoomLock').checked) {
+        document.getElementById('pzEndScale').value = e.target.value;
+        document.getElementById('pzEndScale').dispatchEvent(new Event('input'));
+      }
+    });
+
+    // SVG Speed Curve Visualizer
+    function updateSpeedCurveSvg() {
+      const sc = document.getElementById('speedCurve').value;
+      const map = {
+        MONTAGE: 'M 0 32 L 75 9 L 165 36 L 240 12 L 300 30',
+        HERO: 'M 0 14 L 105 9 L 165 39 L 240 9 L 300 14',
+        BULLET: 'M 0 12 L 120 41 L 195 41 L 300 10',
+        JUMP_CUT: 'M 0 28 L 90 8 L 150 30 L 225 8 L 300 28',
+        FLASH_IN: 'M 0 8 L 105 23 L 300 30',
+        FLASH_OUT: 'M 0 30 L 195 23 L 300 8',
+        NONE: 'M 0 25 L 150 25 L 300 25'
+      };
+      document.getElementById('speedCurvePath').setAttribute('d', map[sc] || map.NONE);
+    }
+    document.getElementById('speedCurve').addEventListener('change', updateSpeedCurveSvg);
+
+    // Trim mutual clamping & visual highlight
+    const trimS = document.getElementById('trimStart');
+    const trimE = document.getElementById('trimEnd');
+    function updateTrimVisuals(changedStart) {
+      let s = parseInt(trimS.value, 10);
+      let e = parseInt(trimE.value, 10);
+      if (changedStart && s > e - 5) { s = Math.max(0, e - 5); trimS.value = s; }
+      if (!changedStart && e < s + 5) { e = Math.min(100, s + 5); trimE.value = e; }
+      document.getElementById('trimStartLbl').textContent = s + '%';
+      document.getElementById('trimEndLbl').textContent = e + '%';
+      document.getElementById('trimHighlight').style.left = s + '%';
+      document.getElementById('trimHighlight').style.right = (100 - e) + '%';
+    }
+    trimS.addEventListener('input', () => updateTrimVisuals(true));
+    trimE.addEventListener('input', () => updateTrimVisuals(false));
+
+    // Interactive Seekbar & Track Strip Scrubbing
+    function getActiveProgressNorm() {
+      if (videoEl.duration && !isNaN(videoEl.duration) && videoEl.duration > 0) {
+        return Math.max(0, Math.min(1, videoEl.currentTime / videoEl.duration));
+      }
+      return Math.max(0, Math.min(1, virtualClockSec / Math.max(1, targetDurationSec)));
+    }
+    function seekToNorm(norm) {
+      const clamped = Math.max(0, Math.min(1, norm));
+      if (videoEl.duration && !isNaN(videoEl.duration) && videoEl.duration > 0) {
+        videoEl.currentTime = videoEl.duration * clamped;
+      } else {
+        virtualClockSec = targetDurationSec * clamped;
+      }
+      document.getElementById('playheadLine').style.left = (clamped * 100).toFixed(1) + '%';
+      document.getElementById('timelineSeek').value = Math.round(clamped * 1000);
+    }
+    document.getElementById('timelineSeek').addEventListener('input', (e) => {
+      seekToNorm(parseInt(e.target.value, 10) / 1000);
+    });
+    document.getElementById('trackStrip').addEventListener('click', (e) => {
+      const r = e.currentTarget.getBoundingClientRect();
+      seekToNorm((e.clientX - r.left) / Math.max(1, r.width));
+    });
+
+    document.getElementById('btnTrimLeftQuick').addEventListener('click', () => {
+      pushUndo();
+      trimS.value = Math.min(90, Math.round(getActiveProgressNorm() * 100));
+      updateTrimVisuals(true);
+      showToast('✂️ बायाँ हिस्सा ट्रिम किया गया: ' + trimS.value + '%');
+    });
+    document.getElementById('btnTrimRightQuick').addEventListener('click', () => {
+      pushUndo();
+      trimE.value = Math.max(10, Math.round(getActiveProgressNorm() * 100));
+      updateTrimVisuals(false);
+      showToast('✂️ दायाँ हिस्सा ट्रिम किया गया: ' + trimE.value + '%');
+    });
+
+    function doSplitAtPlayhead() {
+      pushUndo();
+      const sFrac = parseInt(trimS.value, 10) / 100;
+      const eFrac = parseInt(trimE.value, 10) / 100;
+      const pFrac = getActiveProgressNorm();
+      splitPct = (pFrac > sFrac + 0.02 && pFrac < eFrac - 0.02)
+        ? Math.round(pFrac * 100)
+        : Math.round(((sFrac + eFrac) / 2) * 100);
+      const pin = document.getElementById('splitPin');
+      pin.style.left = splitPct + '%';
+      pin.style.display = 'block';
+      if (document.getElementById('activeTransition').value === 'NONE') {
+        document.getElementById('activeTransition').value = '3D_NEWS_FLIP';
+      }
+      playAlertSiren();
+      showToast('✂️ क्लिप ' + splitPct + '% पर स्प्लिट हुई + 3D ट्रांज़िशन लागू!');
+    }
+    document.getElementById('btnSplitClip').addEventListener('click', doSplitAtPlayhead);
+    document.getElementById('btnSplitTimelineQuick').addEventListener('click', doSplitAtPlayhead);
+
+    // Keyframe Add / Clear
+    function renderKeyframePins() {
+      const box = document.getElementById('keyframeTrackPins');
+      box.innerHTML = '';
+      keyframes.forEach(kf => {
+        const d = document.createElement('div');
+        d.className = 'kf-diamond';
+        d.style.left = (kf.t * 100).toFixed(1) + '%';
+        box.appendChild(d);
+      });
+      document.getElementById('kfCountLbl').textContent = keyframes.length;
+    }
+    function addKeyframeNow() {
+      const t = getActiveProgressNorm();
+      const scale = parseFloat(document.getElementById('kfScaleInput').value) || 1.0;
+      const opacity = parseFloat(document.getElementById('kfOpacityInput').value) || 1.0;
+      keyframes = keyframes.filter(k => Math.abs(k.t - t) > 0.015);
+      keyframes.push({ t, scale, opacity });
+      keyframes.sort((a, b) => a.t - b.t);
+      renderKeyframePins();
+      showToast('🔑 कीफ़्रेम ' + Math.round(t * 100) + '% पर जोड़ा गया (' + Math.round(scale * 100) + '%)');
+    }
+    document.getElementById('btnAddKeyframe').addEventListener('click', addKeyframeNow);
+    document.getElementById('btnAddKeyframeQuick').addEventListener('click', addKeyframeNow);
+    document.getElementById('btnClearKeyframes').addEventListener('click', () => {
+      keyframes = []; renderKeyframePins(); showToast('🗑️ सभी कीफ़्रेम हटाए गए');
+    });
+
+    // ChatGPT Voice Effects + Classic Voice Presets + WebAudio Chain + SpeechSynthesis AI Voiceover
+    const VOICE_PITCH_MAP = {
+      NORMAL: 1.0,
+      CHATGPT_COVE: 0.90, CHATGPT_BREEZE: 1.08, CHATGPT_EMBER: 0.98,
+      CHATGPT_JUNIPER: 1.18, CHATGPT_SKY: 1.14, CHATGPT_SOL: 0.95,
+      DEEP_ANCHOR: 0.76, FEMALE_ANCHOR: 1.28, RADIO_MIC: 1.04,
+      ECHO_STUDIO: 0.98, CHIPMUNK: 1.55, ROBOT: 0.86, MEGAPHONE: 1.10, SLOW_CINEMA: 0.68
+    };
+    function syncChatGptChips() {
+      const cur = document.getElementById('voiceEffect').value;
+      document.querySelectorAll('#chatGptVoiceChips .chip').forEach(c => {
+        c.classList.toggle('active', c.dataset.voice === cur);
+      });
+    }
+    document.querySelectorAll('#chatGptVoiceChips .chip').forEach(c => {
+      c.addEventListener('click', () => {
+        pushUndo();
+        const v = c.dataset.voice;
+        document.getElementById('voiceEffect').value = v;
+        document.getElementById('voiceEffect').dispatchEvent(new Event('change'));
+        document.getElementById('btnTestVoice').click();
+      });
+    });
+    document.getElementById('voiceEffect').addEventListener('change', (e) => {
+      const p = VOICE_PITCH_MAP[e.target.value] ?? 1.0;
+      document.getElementById('voicePitch').value = String(p);
+      document.getElementById('voicePitchLbl').textContent = p.toFixed(2) + 'x';
+      syncChatGptChips();
+      applyWebAudioVoiceChain();
+      showToast('🎙️ वॉइस इफ़ेक्ट लागू: ' + e.target.value);
+    });
+
+    let pcAudioCtx = null;
+    let pcMediaSrc = null;
+    let pcFilterNode = null;
+    let pcWarmthNode = null;
+    let pcBoostGain = null;
+    let pcRobotGain = null;
+    let pcRobotLfo = null;
+    let pcRobotLfoDepth = null;
+    let pcDelayNode = null;
+    let pcDelayGain = null;
+    let pcExportDest = null;
+
+    function applyWebAudioVoiceChain() {
+      try {
+        if (!pcAudioCtx) {
+          pcAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          pcExportDest = pcAudioCtx.createMediaStreamDestination();
+        }
+        if (pcAudioCtx.state === 'suspended') pcAudioCtx.resume().catch(() => {});
+        if (!pcMediaSrc && videoEl) {
+          pcMediaSrc = pcAudioCtx.createMediaElementSource(videoEl);
+          pcFilterNode = pcAudioCtx.createBiquadFilter();
+          pcWarmthNode = pcAudioCtx.createBiquadFilter();
+          pcBoostGain = pcAudioCtx.createGain();
+          pcRobotGain = pcAudioCtx.createGain();
+          pcRobotLfo = pcAudioCtx.createOscillator();
+          pcRobotLfoDepth = pcAudioCtx.createGain();
+          pcRobotLfo.type = 'sine';
+          pcRobotLfo.frequency.value = 38;
+          pcRobotLfoDepth.gain.value = 0;
+          pcRobotGain.gain.value = 1;
+          pcRobotLfo.connect(pcRobotLfoDepth);
+          pcRobotLfoDepth.connect(pcRobotGain.gain);
+          pcRobotLfo.start();
+
+          pcDelayNode = pcAudioCtx.createDelay(1.0);
+          pcDelayGain = pcAudioCtx.createGain();
+          pcMediaSrc.connect(pcFilterNode);
+          pcFilterNode.connect(pcWarmthNode);
+          pcWarmthNode.connect(pcBoostGain);
+          pcBoostGain.connect(pcRobotGain);
+          pcRobotGain.connect(pcAudioCtx.destination);
+          pcRobotGain.connect(pcExportDest);
+          pcRobotGain.connect(pcDelayNode);
+          pcDelayNode.connect(pcDelayGain);
+          pcDelayGain.connect(pcAudioCtx.destination);
+          pcDelayGain.connect(pcExportDest);
+        }
+        if (pcFilterNode && pcWarmthNode && pcBoostGain && pcDelayNode && pcDelayGain && pcRobotLfoDepth) {
+          const eff = document.getElementById('voiceEffect').value;
+          const boost = (parseInt(document.getElementById('audioVolumeBoost').value, 10) || 100) / 100;
+          pcBoostGain.gain.value = document.getElementById('muteVideo').checked ? 0 : Math.min(2.0, boost);
+          pcDelayNode.delayTime.value = eff.startsWith('CHATGPT_') ? 0.045 : 0.24;
+          pcDelayGain.gain.value = eff === 'ECHO_STUDIO' ? 0.42 : (eff === 'CHATGPT_COVE' || eff === 'CHATGPT_SKY' || eff === 'CHATGPT_SOL' ? 0.14 : 0.0);
+          pcRobotLfoDepth.gain.value = (eff === 'ROBOT') ? 0.55 : 0.0;
+          pcWarmthNode.type = 'allpass'; pcWarmthNode.gain.value = 0;
+
+          if (eff === 'CHATGPT_COVE' || eff === 'CHATGPT_SOL') {
+            pcFilterNode.type = 'lowshelf'; pcFilterNode.frequency.value = 260; pcFilterNode.gain.value = 7.5;
+            pcWarmthNode.type = 'peaking'; pcWarmthNode.frequency.value = 1800; pcWarmthNode.gain.value = 3.5;
+          } else if (eff === 'CHATGPT_BREEZE' || eff === 'CHATGPT_SKY' || eff === 'CHATGPT_JUNIPER') {
+            pcFilterNode.type = 'highshelf'; pcFilterNode.frequency.value = 2400; pcFilterNode.gain.value = 6.5;
+            pcWarmthNode.type = 'lowshelf'; pcWarmthNode.frequency.value = 180; pcWarmthNode.gain.value = 3.0;
+          } else if (eff === 'CHATGPT_EMBER') {
+            pcFilterNode.type = 'peaking'; pcFilterNode.frequency.value = 1200; pcFilterNode.gain.value = 6.5;
+            pcWarmthNode.type = 'highshelf'; pcWarmthNode.frequency.value = 3200; pcWarmthNode.gain.value = 4.0;
+          } else if (eff === 'DEEP_ANCHOR' || eff === 'SLOW_CINEMA') {
+            pcFilterNode.type = 'lowshelf'; pcFilterNode.frequency.value = 280; pcFilterNode.gain.value = 9;
+          } else if (eff === 'RADIO_MIC' || eff === 'MEGAPHONE') {
+            pcFilterNode.type = 'bandpass'; pcFilterNode.frequency.value = eff === 'MEGAPHONE' ? 1600 : 1200; pcFilterNode.Q.value = 1.6;
+          } else if (eff === 'FEMALE_ANCHOR' || eff === 'CHIPMUNK') {
+            pcFilterNode.type = 'highshelf'; pcFilterNode.frequency.value = 2200; pcFilterNode.gain.value = 7;
+          } else {
+            pcFilterNode.type = 'allpass'; pcFilterNode.gain.value = 0;
+          }
+        }
+      } catch (_) {}
+    }
+    document.getElementById('audioVolumeBoost').addEventListener('input', applyWebAudioVoiceChain);
+    document.getElementById('muteVideo').addEventListener('change', () => {
+      videoEl.muted = document.getElementById('muteVideo').checked;
+      applyWebAudioVoiceChain();
+    });
+
+    // Live Mic routed through ChatGPT/Studio Voice Changer DSP
+    document.getElementById('btnMicVoiceFx').addEventListener('click', async () => {
+      const btn = document.getElementById('btnMicVoiceFx');
+      if (micStream) {
+        try { micSourceNode && micSourceNode.disconnect(); } catch (_) {}
+        micStream.getTracks().forEach(t => t.stop());
+        micStream = null; micSourceNode = null;
+        btn.textContent = '🎤 लाइव माइक वॉइस चेंजर';
+        btn.classList.remove('btn-red');
+        showToast('🎤 लाइव माइक बंद');
+        return;
+      }
+      try {
+        applyWebAudioVoiceChain();
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        micSourceNode = pcAudioCtx.createMediaStreamSource(micStream);
+        micSourceNode.connect(pcFilterNode);
+        btn.textContent = '⏹️ लाइव माइक बंद करें';
+        btn.classList.add('btn-red');
+        showToast('🎙️ लाइव माइक ChatGPT/वॉइस इफ़ेक्ट में चालू!');
+      } catch (e) {
+        showToast('माइक अनुमति नहीं मिली: ' + e.message);
+      }
+    });
+
+    // Test Voice Effect Audio Chime (Distinct ChatGPT two-note AI chime + classic voices)
+    document.getElementById('btnTestVoice').addEventListener('click', () => {
+      try {
+        const ac = ensureAc();
+        const eff = document.getElementById('voiceEffect').value;
+        const pitch = parseFloat(document.getElementById('voicePitch').value) || 1.0;
+        const baseMap = {
+          CHATGPT_COVE: 185, CHATGPT_BREEZE: 265, CHATGPT_EMBER: 215,
+          CHATGPT_JUNIPER: 305, CHATGPT_SKY: 288, CHATGPT_SOL: 200,
+          DEEP_ANCHOR: 150, CHIPMUNK: 480, FEMALE_ANCHOR: 310, ROBOT: 185
+        };
+        const baseFreq = (baseMap[eff] || 230) * pitch;
+        const osc = ac.createOscillator();
+        const gain = ac.createGain();
+        osc.type = (eff === 'ROBOT' || eff === 'MEGAPHONE') ? 'sawtooth' : (eff.startsWith('CHATGPT_') ? 'sine' : 'triangle');
+        osc.frequency.setValueAtTime(baseFreq, ac.currentTime);
+        if (eff.startsWith('CHATGPT_')) {
+          osc.frequency.setValueAtTime(baseFreq * 1.25, ac.currentTime + 0.16);
+        } else {
+          osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.18, ac.currentTime + 0.35);
+        }
+        gain.gain.setValueAtTime(0.20, ac.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + (eff.startsWith('CHATGPT_') ? 0.48 : 0.4));
+        osc.connect(gain); gain.connect(ac.destination);
+        osc.start(); osc.stop(ac.currentTime + 0.5);
+        showToast('🔊 वॉइस इफ़ेक्ट प्रीव्यू: ' + eff + ' (' + pitch.toFixed(2) + 'x)');
+      } catch (_) {}
+    });
+
+    // ChatGPT AI Voiceover Reader (SpeechSynthesis matched to ChatGPT Voice persona)
+    function speakWithChatGptVoice(rawText) {
+      const text = (rawText || '').trim() || document.getElementById('headline').value.trim();
+      if (!('speechSynthesis' in window)) {
+        document.getElementById('btnTestVoice').click();
+        return;
+      }
+      window.speechSynthesis.cancel();
+      const eff = document.getElementById('voiceEffect').value;
+      const pitch = parseFloat(document.getElementById('voicePitch').value) || 1.0;
+      const utt = new SpeechSynthesisUtterance(text);
+      const voices = window.speechSynthesis.getVoices();
+      const hiVoice = voices.find(v => v.lang && v.lang.toLowerCase().startsWith('hi')) || voices[0];
+      if (hiVoice) utt.voice = hiVoice;
+      utt.lang = 'hi-IN';
+      utt.pitch = Math.max(0.5, Math.min(2.0, pitch));
+      utt.rate = (eff === 'CHATGPT_COVE' || eff === 'CHATGPT_SOL' || eff === 'SLOW_CINEMA') ? 0.92 :
+                 (eff === 'CHATGPT_EMBER' ? 1.10 : (eff === 'CHATGPT_BREEZE' || eff === 'CHATGPT_SKY' ? 1.04 : 1.0));
+      window.speechSynthesis.speak(utt);
+      showToast('🗣️ ' + eff + ' स्टाइल में न्यूज़ वाचन शुरू!');
+    }
+    document.getElementById('btnSpeakChatGpt').addEventListener('click', () => {
+      speakWithChatGptVoice(document.getElementById('aiTtsInput').value);
+    });
+    document.getElementById('btnSpeakScript').addEventListener('click', () => {
+      speakWithChatGptVoice(document.getElementById('teleprompterText').value);
+    });
+    document.getElementById('btnStopSpeak').addEventListener('click', () => {
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+      showToast('⏹️ वॉइस वाचन रोका गया');
+    });
+
+    // Transform & Reset buttons
+    document.getElementById('btnResetCrop').addEventListener('click', () => {
+      document.getElementById('cropPreset').value = 'FREE';
+      ['cropZoom','cropPanX','cropPanY','cropLeft','cropRight','cropTop','cropBottom'].forEach((id, i) => {
+        document.getElementById(id).value = i === 0 ? '1.0' : '0';
+        document.getElementById(id).dispatchEvent(new Event('input'));
+      });
+      showToast('✂️ वीडियो क्रॉप रीसेट हो गया');
+    });
+    document.getElementById('btnRotate90').addEventListener('click', () => {
+      pushUndo(); rotationDeg = (rotationDeg + 90) % 360;
+      document.getElementById('rotLbl').textContent = rotationDeg + '°';
+    });
+    document.getElementById('btnMirror').addEventListener('click', () => { pushUndo(); mirrorH = !mirrorH; });
+    document.getElementById('btnFlip').addEventListener('click', () => { pushUndo(); flipV = !flipV; });
+    document.getElementById('btnFreeze').addEventListener('click', () => {
+      isFrozen = !isFrozen;
+      if (isFrozen) videoEl.pause(); else if (isPlaying) videoEl.play().catch(() => {});
+      showToast(isFrozen ? '❄️ फ़्रेम फ्रीज़ किया गया' : '▶️ फ्रीज़ हटाया गया');
+    });
+    document.getElementById('btnReverse').addEventListener('click', () => {
+      isReversed = !isReversed;
+      document.getElementById('btnReverse').classList.toggle('btn-red', isReversed);
+      showToast(isReversed ? '⏪ रिवर्स प्लेबैक चालू' : '▶️ सामान्य प्लेबैक');
+    });
+
+    document.getElementById('btnResetVn').addEventListener('click', () => {
+      pushUndo();
+      rotationDeg = 0; mirrorH = false; flipV = false; isFrozen = false; isReversed = false;
+      splitPct = null;
+      document.getElementById('btnReverse').classList.remove('btn-red');
+      document.getElementById('splitPin').style.display = 'none';
+      document.getElementById('rotLbl').textContent = '0°';
+      document.getElementById('speedCurve').value = 'NONE'; updateSpeedCurveSvg();
+      document.getElementById('filterPreset').value = 'NONE';
+      document.getElementById('activeVfx').value = 'NONE';
+      document.getElementById('animFilter').value = 'NONE';
+      document.getElementById('motionFx').value = 'NONE';
+      document.getElementById('vnMask').value = 'NONE';
+      document.getElementById('vnBgStyle').value = 'BLACK';
+      document.getElementById('saturation').value = 100; document.getElementById('saturation').dispatchEvent(new Event('input'));
+      document.getElementById('vnWarmth').value = 0; document.getElementById('vnWarmth').dispatchEvent(new Event('input'));
+      document.getElementById('vnVignette').value = 0; document.getElementById('vnVignette').dispatchEvent(new Event('input'));
+      document.getElementById('vnSharpen').value = 0; document.getElementById('vnSharpen').dispatchEvent(new Event('input'));
+      document.getElementById('borderWidth').value = 0; document.getElementById('borderWidth').dispatchEvent(new Event('input'));
+      document.getElementById('vnOpacity').value = 100; document.getElementById('vnOpacity').dispatchEvent(new Event('input'));
+      document.getElementById('voiceEffect').value = 'NORMAL'; document.getElementById('voiceEffect').dispatchEvent(new Event('change'));
+      document.getElementById('btnResetCrop').click();
+      document.getElementById('vnSubtitle').value = '';
+      showToast('VN टूल्स रीसेट हो गए');
+    });
+
+    document.getElementById('btnResetLayout').addEventListener('click', () => {
+      pushUndo();
+      Object.keys(state.offsets).forEach(k => { state.offsets[k] = { x: 0, y: 0 }; });
+      ['logoScale','headlineScale','tickerScale','reporterScale','badgeScale'].forEach(id => {
+        document.getElementById(id).value = '1.0';
+        document.getElementById(id).dispatchEvent(new Event('input'));
+      });
+      showToast('सभी स्क्रीन ओवरले वापस सेट हो गए');
+    });
+
+    // Handwriting Toggle & Canvas Drawing / Overlay Mouse Dragging
+    document.getElementById('btnToggleDraw').addEventListener('click', () => {
+      drawMode = !drawMode;
+      const btn = document.getElementById('btnToggleDraw');
+      btn.textContent = drawMode ? '✍️ पेन मोड: चालू' : '✍️ पेन मोड: बंद';
+      btn.classList.toggle('btn-red', drawMode);
+      canvas.classList.toggle('draw-mode', drawMode);
+      document.getElementById('stageHint').textContent = drawMode
+        ? '✍️ स्क्रीन पर माउस से तीर, गोला, बॉक्स या फ्रीहैंड ड्रा करें'
+        : '💡 माउस से लोगो, हेडलाइन, रिपोर्टर, स्टिकर या पट्टी को पकड़कर कहीं भी सेट करें';
+    });
+    document.getElementById('btnClearDraw').addEventListener('click', () => {
+      drawnStrokes = []; currentDrawPts = []; showToast('🧹 हैंडराइटिंग साफ़ की गई');
+    });
+
+    let draggingKey = null;
+    let isDrawingNow = false;
+    let dragLast = { x: 0, y: 0 };
+    function canvasPos(evt) {
+      const r = canvas.getBoundingClientRect();
+      return {
+        x: (evt.clientX - r.left) * (canvas.width / r.width),
+        y: (evt.clientY - r.top) * (canvas.height / r.height)
+      };
+    }
+    canvas.addEventListener('mousedown', (evt) => {
+      const p = canvasPos(evt);
+      if (drawMode) {
+        isDrawingNow = true;
+        currentDrawPts = [p];
+        return;
+      }
+      for (const [k, b] of Object.entries(state.hitBoxes).reverse()) {
+        if (b && p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h) {
+          pushUndo();
+          draggingKey = k;
+          dragLast = p;
+          break;
+        }
+      }
+    });
+    window.addEventListener('mousemove', (evt) => {
+      const p = canvasPos(evt);
+      if (isDrawingNow) {
+        currentDrawPts.push(p);
+        return;
+      }
+      if (!draggingKey) return;
+      state.offsets[draggingKey].x += (p.x - dragLast.x);
+      state.offsets[draggingKey].y += (p.y - dragLast.y);
+      dragLast = p;
+    });
+    window.addEventListener('mouseup', () => {
+      if (isDrawingNow && currentDrawPts.length > 0) {
+        drawnStrokes.push({
+          pts: currentDrawPts,
+          tool: document.getElementById('drawTool').value,
+          color: document.getElementById('drawColor').value
+        });
+        currentDrawPts = [];
+      }
+      isDrawingNow = false;
+      draggingKey = null;
+    });
+
+    // LocalStorage Saved Projects Manager
+    const PC_PROJECTS_KEY = 'hk_news_pc_saved_projects_v1';
+    function loadSavedProjectsList() {
+      const box = document.getElementById('savedProjectsList');
+      box.innerHTML = '';
+      let list = [];
+      try { list = JSON.parse(localStorage.getItem(PC_PROJECTS_KEY) || '[]'); } catch (_) {}
+      if (!list.length) {
+        box.innerHTML = '<div style="font-size:11px;color:#94a3b8;">अभी कोई प्रोजेक्ट सेव नहीं है।</div>';
+        return;
+      }
+      list.forEach((proj, idx) => {
+        const row = document.createElement('div');
+        row.className = 'tpl-item';
+        const dt = new Date(proj.savedAt || Date.now()).toLocaleString('hi-IN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' });
+        row.innerHTML = `<div style="min-width:0;flex:1;"><div style="font-size:11px;font-weight:700;color:#fff;">${proj.title}</div><div style="font-size:9px;color:#94a3b8;">${dt}</div></div><button class="chip" style="background:#1565c0;color:#fff;" data-load="${idx}">लोड</button><button class="chip" style="background:#b71c1c;color:#fff;" data-del="${idx}">हटाएँ</button>`;
+        row.querySelector('[data-load]').addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          pushUndo();
+          applyProjectSnapshot(proj.snapshot);
+          showToast('📂 प्रोजेक्ट लोड हुआ: ' + proj.title);
+        });
+        row.querySelector('[data-del]').addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          list.splice(idx, 1);
+          localStorage.setItem(PC_PROJECTS_KEY, JSON.stringify(list));
+          loadSavedProjectsList();
+          showToast('🗑️ प्रोजेक्ट हटाया गया');
+        });
+        box.appendChild(row);
+      });
+    }
+    document.getElementById('btnSaveProjectLocal').addEventListener('click', () => {
+      const title = document.getElementById('projectTitleInput').value.trim() || 'HK News Bulletin';
+      let list = [];
+      try { list = JSON.parse(localStorage.getItem(PC_PROJECTS_KEY) || '[]'); } catch (_) {}
+      list.unshift({ title, savedAt: Date.now(), snapshot: captureProjectSnapshot() });
+      localStorage.setItem(PC_PROJECTS_KEY, JSON.stringify(list.slice(0, 20)));
+      loadSavedProjectsList();
+      showToast('💾 प्रोजेक्ट PC ब्राउज़र में सहेजा गया!');
+    });
+    loadSavedProjectsList();
+
+    // Save PNG Poster
+    function savePoster() {
+      const a = document.createElement('a');
+      a.download = 'HK_NEWS_Poster_' + Date.now() + '.png';
+      a.href = canvas.toDataURL('image/png');
+      a.click();
+      showToast('📸 HD न्यूज़ पोस्टर PC के Downloads में सेव हो गया!');
+    }
+    document.getElementById('btnSnapshot').addEventListener('click', savePoster);
+
+    const MAX_PC_VIDEO_SECONDS = 7200; // 2 Hours (120 Minutes)
+    function formatClockSec(totalSec) {
+      const s = Math.max(0, Math.floor(totalSec));
+      const hh = Math.floor(s / 3600);
+      const mm = String(Math.floor((s % 3600) / 60)).padStart(2, '0');
+      const ss = String(s % 60).padStart(2, '0');
+      return hh > 0 ? `${String(hh).padStart(2, '0')}:${mm}:${ss}` : `${mm}:${ss}`;
+    }
+
+    // Export Edited Video to PC Downloads using MediaRecorder (up to 2 hours)
+    function startVideoExport() {
+      if (mediaRecorder && mediaRecorder.state === 'recording') return;
+      playBreakingStinger();
+      const fps = parseInt(document.getElementById('exportFps').value, 10) || 30;
+      const res = document.getElementById('exportRes').value;
+      const bitrate = res === '1080p' ? 5000000 : res === '480p' ? 1500000 : 2800000;
+      const stream = canvas.captureStream(fps);
+      if (webcamStream) {
+        webcamStream.getAudioTracks().forEach(t => stream.addTrack(t));
+      } else if (micStream) {
+        if (pcExportDest && pcExportDest.stream) pcExportDest.stream.getAudioTracks().forEach(t => stream.addTrack(t));
+      } else if (videoEl && videoEl.src && !document.getElementById('muteVideo').checked) {
+        applyWebAudioVoiceChain();
+        if (pcAudioCtx && pcAudioCtx.state === 'suspended') pcAudioCtx.resume().catch(() => {});
+        if (pcExportDest && pcExportDest.stream) pcExportDest.stream.getAudioTracks().forEach(t => stream.addTrack(t));
+      }
+      try {
+        const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' : 'video/webm';
+        mediaRecorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: bitrate });
+      } catch (_) {
+        mediaRecorder = new MediaRecorder(stream);
+      }
+      recordedChunks = [];
+      mediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) recordedChunks.push(e.data); };
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'video/webm' });
+        recordedChunks = [];
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.download = `HK_NEWS_${res}_Edited_${Date.now()}.webm`;
+        a.href = url;
+        a.click();
+        showToast('🎉 एडिटेड वीडियो सीधे PC के Downloads फ़ोल्डर में सेव हो गई!');
+      };
+      mediaRecorder.start(1000);
+      recSec = 0;
+      document.getElementById('recTimer').textContent = '00:00';
+      document.getElementById('btnExportVideo').style.display = 'none';
+      const stopBtn = document.getElementById('btnStopExport');
+      stopBtn.style.display = 'inline-flex';
+      stopBtn.classList.add('recording');
+      recInterval = setInterval(() => {
+        recSec++;
+        document.getElementById('recTimer').textContent = formatClockSec(recSec);
+        if (recSec >= MAX_PC_VIDEO_SECONDS) {
+          stopVideoExport();
+          showToast('⏱️ अधिकतम 2 घंटे (02:00:00) की वीडियो एक्सपोर्ट पूरी हुई!');
+        }
+      }, 1000);
+      showToast(`🎬 ${res} (${fps} FPS) वीडियो एक्सपोर्ट शुरू — रोकने के लिए लाल बटन दबाएँ`);
+    }
+
+    function stopVideoExport() {
+      if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop();
+      clearInterval(recInterval);
+      document.getElementById('btnStopExport').style.display = 'none';
+      document.getElementById('btnStopExport').classList.remove('recording');
+      document.getElementById('btnExportVideo').style.display = 'inline-flex';
+    }
+    document.getElementById('btnExportVideo').addEventListener('click', startVideoExport);
+    document.getElementById('btnStopExport').addEventListener('click', stopVideoExport);
+
+    // Keyboard shortcuts
+    window.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); document.getElementById('btnUndo').click(); return; }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); document.getElementById('btnRedo').click(); return; }
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) return;
+      if (e.code === 'Space') { e.preventDefault(); document.getElementById('btnPlayPause').click(); }
+      if (e.key.toLowerCase() === 's') { e.preventDefault(); savePoster(); }
+      if (e.key.toLowerCase() === 'e') {
+        e.preventDefault();
+        if (mediaRecorder && mediaRecorder.state === 'recording') stopVideoExport();
+        else startVideoExport();
+      }
+    });
+
+    function buildFilterCss() {
+      const sharp = parseInt(document.getElementById('vnSharpen').value, 10) || 0;
+      const b = 100 + parseInt(document.getElementById('brightness').value, 10);
+      const c = parseInt(document.getElementById('contrast').value, 10) + Math.round(sharp * 0.22);
+      let s = parseInt(document.getElementById('saturation').value, 10);
+      const w = parseInt(document.getElementById('vnWarmth').value, 10) || 0;
+      let extra = '';
+      if (w > 4) extra += ` sepia(${Math.round(w * 0.6)}%)`;
+      else if (w < -4) extra += ` hue-rotate(${Math.round(w * 0.35)}deg)`;
+      const p = document.getElementById('filterPreset').value;
+      if (p === 'VIVID') s = Math.round(s * 1.45);
+      else if (p === 'BW' || p === 'NOIR') s = 0;
+      else if (p === 'WARM' || p === 'WARM_VLOG' || p === 'GOLDEN_HOUR') extra += ' sepia(28%)';
+      else if (p === 'CINEMA' || p === 'CINE_TEAL') extra += ' sepia(14%) contrast(114%)';
+      else if (p === 'VINTAGE') extra += ' sepia(65%)';
+      else if (p === 'COOL_STUDIO') extra += ' hue-rotate(190deg) saturate(85%)';
+      else if (p === 'NIGHT_VISION') extra += ' hue-rotate(85deg) contrast(130%)';
+      else if (p === 'BREAKING_ALERT') extra += ' hue-rotate(-18deg) saturate(145%)';
+      else if (p === 'MOODY_NEWS') extra += ' brightness(85%) contrast(120%)';
+      else if (p === 'CYBER') extra += ' saturate(145%) hue-rotate(25deg)';
+      else if (p === 'SAFFRON') extra += ' sepia(35%) saturate(150%)';
+      else if (p === 'DRAMATIC') s = Math.round(s * 0.45);
+      else if (p === 'FRESH_DAY') extra += ' brightness(108%) saturate(118%)';
+      return `brightness(${b}%) contrast(${c}%) saturate(${s}%)${extra}`;
+    }
+
+    function drawRoundedRect(x, y, w, h, r, fill, stroke, lineW = 3) {
+      ctx.beginPath();
+      ctx.roundRect(x, y, w, h, r);
+      if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+      if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = lineW; ctx.stroke(); }
+    }
+
+    function drawChromaKeyFilteredSource(media, w, h) {
+      if (!document.getElementById('chromaEnabled').checked) return media;
+      const cw = Math.min(480, w), ch = Math.min(360, Math.max(180, Math.round(cw * (h / Math.max(1, w)))));
+      if (chromaCanvas.width !== cw || chromaCanvas.height !== ch) {
+        chromaCanvas.width = cw; chromaCanvas.height = ch;
+      }
+      chromaCtx.drawImage(media, 0, 0, cw, ch);
+      const imgData = chromaCtx.getImageData(0, 0, cw, ch);
+      const d = imgData.data;
+      const keyColor = document.getElementById('chromaColor').value;
+      const sim = parseFloat(document.getElementById('chromaSimilarity').value) || 0.45;
+      const kr = keyColor === '#FFFFFF' ? 255 : 0;
+      const kg = keyColor === '#00FF00' || keyColor === '#FFFFFF' ? 255 : 0;
+      const kb = keyColor === '#0000FF' || keyColor === '#FFFFFF' ? 255 : 0;
+      const thresh = 45 + sim * 165;
+      for (let i = 0; i < d.length; i += 4) {
+        const dist = Math.hypot(d[i] - kr, d[i + 1] - kg, d[i + 2] - kb);
+        if (dist < thresh) {
+          d[i + 3] = dist < thresh * 0.65 ? 0 : Math.round(((dist - thresh * 0.65) / (thresh * 0.35)) * 255);
+        }
+      }
+      chromaCtx.putImageData(imgData, 0, 0);
+      return chromaCanvas;
+    }
+
+    function drawStroke(st) {
+      if (!st.pts || !st.pts.length) return;
+      ctx.save();
+      ctx.strokeStyle = st.color; ctx.fillStyle = st.color;
+      ctx.lineWidth = 5; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      const first = st.pts[0], last = st.pts[st.pts.length - 1];
+      if (st.tool === 'PEN') {
+        ctx.beginPath(); ctx.moveTo(first.x, first.y);
+        for (let i = 1; i < st.pts.length; i++) ctx.lineTo(st.pts[i].x, st.pts[i].y);
+        ctx.stroke();
+      } else if (st.tool === 'ARROW') {
+        ctx.beginPath(); ctx.moveTo(first.x, first.y); ctx.lineTo(last.x, last.y); ctx.stroke();
+        const a = Math.atan2(last.y - first.y, last.x - first.x), L = 20;
+        ctx.beginPath();
+        ctx.moveTo(last.x, last.y); ctx.lineTo(last.x - L * Math.cos(a - 0.5), last.y - L * Math.sin(a - 0.5));
+        ctx.moveTo(last.x, last.y); ctx.lineTo(last.x - L * Math.cos(a + 0.5), last.y - L * Math.sin(a + 0.5));
+        ctx.stroke();
+      } else if (st.tool === 'CIRCLE') {
+        const r = Math.max(12, Math.hypot(last.x - first.x, last.y - first.y) / 2);
+        ctx.beginPath(); ctx.arc((first.x + last.x) / 2, (first.y + last.y) / 2, r, 0, Math.PI * 2); ctx.stroke();
+      } else if (st.tool === 'RECT') {
+        ctx.strokeRect(Math.min(first.x, last.x), Math.min(first.y, last.y), Math.max(12, Math.abs(last.x - first.x)), Math.max(12, Math.abs(last.y - first.y)));
+      }
+      ctx.restore();
+    }
+
+    function renderLoop(now) {
+      const dt = Math.min(0.1, (now - lastTime) / 1000);
+      lastTime = now;
+      const W = canvas.width;
+      const H = canvas.height;
+
+      // Timeline & Audio Trim/Speed Curve/Reverse Sync
+      const sFrac = parseInt(trimS.value, 10) / 100;
+      const eFrac = Math.max(sFrac + 0.05, parseInt(trimE.value, 10) / 100);
+      let normProgress = 0;
+
+      if (videoEl.duration && !isNaN(videoEl.duration)) {
+        const minT = videoEl.duration * sFrac;
+        const maxT = videoEl.duration * eFrac;
+        if (isReversed && isPlaying && !isFrozen) {
+          videoEl.pause();
+          const step = dt * (parseFloat(document.getElementById('playbackSpeed').value) || 1.0);
+          videoEl.currentTime = (videoEl.currentTime - step <= minT) ? maxT : videoEl.currentTime - step;
+        } else {
+          if (videoEl.currentTime < minT || videoEl.currentTime > maxT) videoEl.currentTime = minT;
+          const baseSpd = parseFloat(document.getElementById('playbackSpeed').value) || 1.0;
+          const sc = document.getElementById('speedCurve').value;
+          const rel = (videoEl.currentTime - minT) / Math.max(0.01, maxT - minT);
+          let curveM = 1.0;
+          if (sc === 'MONTAGE') curveM = (rel < 0.35 || rel > 0.7) ? 1.45 : 0.7;
+          else if (sc === 'HERO') curveM = (rel >= 0.3 && rel <= 0.65) ? 0.5 : 1.35;
+          else if (sc === 'BULLET') curveM = (rel >= 0.25 && rel <= 0.75) ? 0.35 : 1.5;
+          else if (sc === 'JUMP_CUT') curveM = Math.floor(rel * 4) % 2 === 0 ? 1.5 : 0.85;
+          else if (sc === 'FLASH_IN') curveM = 1.5 - rel * 0.6;
+          else if (sc === 'FLASH_OUT') curveM = 0.8 + rel * 0.7;
+          const targetRate = Math.max(0.25, Math.min(4.0, baseSpd * curveM));
+          if (Math.abs(videoEl.playbackRate - targetRate) > 0.03) videoEl.playbackRate = targetRate;
+        }
+        normProgress = Math.max(0, Math.min(1, videoEl.currentTime / videoEl.duration));
+        document.getElementById('timeDisplay').textContent = `${formatClockSec(videoEl.currentTime)} / ${formatClockSec(videoEl.duration)}`;
+      } else {
+        if (isPlaying && !isFrozen) {
+          const baseSpd = parseFloat(document.getElementById('playbackSpeed').value) || 1.0;
+          virtualClockSec = isReversed ? (virtualClockSec - dt * baseSpd) : (virtualClockSec + dt * baseSpd);
+          const minT = targetDurationSec * sFrac, maxT = targetDurationSec * eFrac;
+          if (virtualClockSec < minT) virtualClockSec = maxT;
+          if (virtualClockSec > maxT) virtualClockSec = minT;
+        }
+        normProgress = Math.max(0, Math.min(1, virtualClockSec / Math.max(1, targetDurationSec)));
+        document.getElementById('timeDisplay').textContent = `${formatClockSec(virtualClockSec)} / ${formatClockSec(targetDurationSec)}`;
+      }
+      document.getElementById('playheadLine').style.left = (normProgress * 100).toFixed(1) + '%';
+      document.getElementById('timelineSeek').value = Math.round(normProgress * 1000);
+
+      // Compute In / Out / Transition / Keyframe Transforms
+      const relSpan = Math.max(0.01, eFrac - sFrac);
+      const relProg = Math.max(0, Math.min(1, (normProgress - sFrac) / relSpan));
+      const inT = Math.min(1, relProg / 0.14);
+      const outT = Math.min(1, (1 - relProg) / 0.14);
+      let animAlpha = (parseInt(document.getElementById('vnOpacity').value, 10) || 100) / 100;
+      let animScale = 1.0, animRotRad = 0, animTx = 0, animTy = 0;
+
+      const inAnim = document.getElementById('inAnim').value;
+      if (inAnim === 'FADE_IN') animAlpha *= inT;
+      else if (inAnim === 'POP_UP') animScale *= (0.4 + 0.6 * inT);
+      else if (inAnim === 'SLIDE_RIGHT') animTx -= (1 - inT) * W * 0.4;
+      else if (inAnim === 'SLIDE_UP') animTy += (1 - inT) * H * 0.4;
+      else if (inAnim === 'SPIN_CLOCKWISE') animRotRad += (1 - inT) * Math.PI;
+
+      const outAnim = document.getElementById('outAnim').value;
+      if (outAnim === 'FADE_OUT') animAlpha *= outT;
+      else if (outAnim === 'SLIDE_LEFT') animTx -= (1 - outT) * W * 0.4;
+      else if (outAnim === 'SLIDE_DOWN') animTy += (1 - outT) * H * 0.4;
+
+      const cutRatio = splitPct !== null ? splitPct / 100 : 0.5;
+      const transType = document.getElementById('activeTransition').value;
+      const distCut = Math.abs(normProgress - cutRatio);
+      let transProg = (transType !== 'NONE' && distCut < 0.08) ? (1 - distCut / 0.08) : 0;
+      if (transType === 'ZOOM_BURST') animScale *= (1 + transProg * 0.35);
+      else if (transType === '3D_NEWS_FLIP' || transType === 'CUBE_ROTATE') animScale *= (1 - transProg * 0.25);
+      else if (transType === 'WIPE_RIGHT') animTx += transProg * W * 0.18;
+      else if (transType === 'CROSSFADE') animAlpha *= (1 - transProg * 0.65);
+
+      if (keyframes.length > 0) {
+        let prev = keyframes[0], next = keyframes[keyframes.length - 1];
+        for (const k of keyframes) {
+          if (k.t <= normProgress) prev = k;
+          if (k.t >= normProgress) { next = k; break; }
+        }
+        const f = (next.t === prev.t) ? 0 : (normProgress - prev.t) / (next.t - prev.t);
+        animScale *= (prev.scale + (next.scale - prev.scale) * f);
+        animAlpha *= (prev.opacity + (next.opacity - prev.opacity) * f);
+      }
+
+      // 1. VN Canvas Background Style + Virtual Studio Animated Backdrop
+      const bgStyle = document.getElementById('vnBgStyle').value;
+      const bgColors = {
+        BLACK: ['#050810', '#0a1020'],
+        NAVY_STUDIO: ['#06132b', '#0d47a1'],
+        CRIMSON_NEWS: ['#2a0606', '#8e0000'],
+        GOLD_ROYAL: ['#211602', '#6d4c05'],
+        GRADIENT_DARK: ['#070b14', '#1e1b4b']
+      }[bgStyle] || ['#070b14', '#1e1b4b'];
+      const bg = ctx.createLinearGradient(0, 0, W, H);
+      bg.addColorStop(0, bgColors[0]); bg.addColorStop(1, bgColors[1]);
+      ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+      const media = (videoEl.readyState >= 2) ? videoEl : sourceImg;
+      const vTheme = document.getElementById('virtualTheme').value;
+      if (!media || document.getElementById('chromaEnabled').checked) {
+        // Draw animated Virtual Studio Theme
+        ctx.save();
+        if (vTheme === 'BREAKING_BEAMS') {
+          ctx.strokeStyle = 'rgba(239,68,68,0.22)'; ctx.lineWidth = 40;
+          const beamX = ((now * 0.12) % (W + 300)) - 150;
+          ctx.beginPath(); ctx.moveTo(beamX, 0); ctx.lineTo(beamX - 180, H); ctx.stroke();
+        } else if (vTheme === 'DIGITAL_STUDIO') {
+          ctx.strokeStyle = 'rgba(0,229,255,0.12)'; ctx.lineWidth = 1;
+          for (let gx = 0; gx < W; gx += 60) { ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, H); ctx.stroke(); }
+          for (let gy = 0; gy < H; gy += 60) { ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(W, gy); ctx.stroke(); }
+        } else if (vTheme === 'GOLDEN_LUXURY') {
+          const rg = ctx.createRadialGradient(W / 2, H * 0.4, 30, W / 2, H * 0.4, W * 0.6);
+          rg.addColorStop(0, 'rgba(255,213,79,0.25)'); rg.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.fillStyle = rg; ctx.fillRect(0, 0, W, H);
+        } else {
+          ctx.strokeStyle = 'rgba(0,229,255,0.20)'; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.arc(W / 2, H * 0.42, Math.min(W, H) * 0.25, 0, Math.PI * 2); ctx.stroke();
+          ctx.beginPath(); ctx.ellipse(W / 2, H * 0.42, Math.min(W, H) * 0.25 * Math.abs(Math.cos(now * 0.001)), Math.min(W, H) * 0.25, 0, 0, Math.PI * 2); ctx.stroke();
+        }
+        if (!media) {
+          ctx.fillStyle = '#e2e8f0'; ctx.font = 'bold 26px sans-serif'; ctx.textAlign = 'center';
+          ctx.fillText('H.K NEWS LIVE BROADCAST STUDIO', W / 2, H * 0.40);
+          ctx.font = '15px sans-serif'; ctx.fillStyle = '#ffd54f';
+          ctx.fillText('ऊपर से वीडियो/फ़ोटो जोड़ें, वेबकैम चालू करें या वर्चुअल स्टूडियो में रिकॉर्ड करें', W / 2, H * 0.47);
+        }
+        ctx.restore();
+      }
+
+      // 2. Main Media Layer with Chroma Key, Pan & Zoom, Transforms, Crop, Split/PIP
+      const layout = document.getElementById('layoutMode').value;
+      const secMedia = (secVideoEl.readyState >= 2) ? secVideoEl : secondaryImg;
+      if (media) {
+        ctx.save();
+        ctx.globalAlpha = Math.max(0.2, Math.min(1.0, animAlpha));
+        ctx.filter = buildFilterCss();
+        const motion = document.getElementById('motionFx').value;
+        const shakeX = (motion === 'SHAKE' || motion === 'JITTER') ? Math.sin(now * 0.045) * 7 : 0;
+        const shakeY = (motion === 'SHAKE' || motion === 'JITTER') ? Math.cos(now * 0.055) * 6 : 0;
+        const pulseScale = (motion === 'PULSE' || motion === 'EXPANSION') ? 1 + Math.sin(now * 0.008) * 0.035 : 1;
+        let pzScale = 1;
+        if (document.getElementById('panZoom').checked) {
+          const sS = parseFloat(document.getElementById('pzStartScale').value) || 1.0;
+          const eS = parseFloat(document.getElementById('pzEndScale').value) || 1.25;
+          pzScale = sS + (eS - sS) * relProg;
+        }
+        const rawCropZoom = parseFloat(document.getElementById('cropZoom').value) || 1.0;
+        const rawPanX = parseFloat(document.getElementById('cropPanX').value) || 0;
+        const rawPanY = parseFloat(document.getElementById('cropPanY').value) || 0;
+        const effCropZoom = Math.max(rawCropZoom, 1 + Math.max(Math.abs(rawPanX), Math.abs(rawPanY)) * 0.5);
+        const cropPanX = rawPanX * W * 0.22 * effCropZoom;
+        const cropPanY = rawPanY * H * 0.22 * effCropZoom;
+
+        const targetW = (layout === 'SPLIT_SCREEN' && secMedia) ? W / 2 : W;
+        if (layout === 'SPLIT_SCREEN' && secMedia) {
+          ctx.beginPath(); ctx.rect(0, 0, W / 2, H); ctx.clip();
+        }
+        ctx.translate(targetW / 2 + shakeX + cropPanX + animTx, H / 2 + shakeY + cropPanY + animTy);
+        ctx.rotate((rotationDeg * Math.PI) / 180 + animRotRad);
+        ctx.scale(
+          (mirrorH ? -1 : 1) * pulseScale * pzScale * effCropZoom * animScale,
+          (flipV ? -1 : 1) * pulseScale * pzScale * effCropZoom * animScale
+        );
+
+        const mw = media.videoWidth || media.naturalWidth || W;
+        const mh = media.videoHeight || media.naturalHeight || H;
+        const baseImg = drawChromaKeyFilteredSource(media, mw, mh);
+        const scale = Math.max(targetW / mw, H / mh);
+        ctx.drawImage(baseImg, -(mw * scale) / 2, -(mh * scale) / 2, mw * scale, mh * scale);
+        ctx.restore();
+      }
+
+      // Secondary Media Layer (SPLIT_SCREEN or PIP_CORNER)
+      if (secMedia && layout !== 'FULLSCREEN') {
+        ctx.save();
+        const smw = secMedia.videoWidth || secMedia.naturalWidth || 320;
+        const smh = secMedia.videoHeight || secMedia.naturalHeight || 240;
+        if (layout === 'SPLIT_SCREEN') {
+          ctx.beginPath(); ctx.rect(W / 2, 0, W / 2, H); ctx.clip();
+          const sScale = Math.max((W / 2) / smw, H / smh);
+          ctx.drawImage(secMedia, W * 0.75 - (smw * sScale) / 2, H / 2 - (smh * sScale) / 2, smw * sScale, smh * sScale);
+          ctx.fillStyle = '#ffd54f'; ctx.fillRect(W / 2 - 2, 0, 4, H);
+        } else {
+          const pw = Math.round(W * 0.28), ph = Math.round(pw * 0.62);
+          const px = W - pw - 22, py = 122;
+          drawRoundedRect(px, py, pw, ph, 10, '#000', '#ffd54f', 3);
+          ctx.beginPath(); ctx.roundRect(px + 2, py + 2, pw - 4, ph - 4, 8); ctx.clip();
+          ctx.drawImage(secMedia, px, py, pw, ph);
+        }
+        ctx.restore();
+      }
+
+      // 3. Crop Edge Mattes & Aspect Matte Bars
+      const cL = (parseFloat(document.getElementById('cropLeft').value) || 0) * W * 0.5;
+      const cR = (parseFloat(document.getElementById('cropRight').value) || 0) * W * 0.5;
+      const cT = (parseFloat(document.getElementById('cropTop').value) || 0) * H * 0.5;
+      const cB = (parseFloat(document.getElementById('cropBottom').value) || 0) * H * 0.5;
+      if (cL > 0 || cR > 0 || cT > 0 || cB > 0) {
+        ctx.fillStyle = '#04070d';
+        if (cL > 0) ctx.fillRect(0, 0, cL, H);
+        if (cR > 0) ctx.fillRect(W - cR, 0, cR, H);
+        if (cT > 0) ctx.fillRect(0, 0, W, cT);
+        if (cB > 0) ctx.fillRect(0, H - cB, W, cB);
+      }
+      const cropPreset = document.getElementById('cropPreset').value;
+      const targetRatios = { '1:1': 1.0, '4:5': 0.8, '9:16': 9 / 16, '4:3': 4 / 3, '21:9': 21 / 9 };
+      if (targetRatios[cropPreset]) {
+        const targetRatio = targetRatios[cropPreset];
+        const curRatio = W / H;
+        ctx.fillStyle = '#04070d';
+        if (curRatio > targetRatio) {
+          const barW = Math.max(0, (W - H * targetRatio) / 2);
+          ctx.fillRect(0, 0, barW, H); ctx.fillRect(W - barW, 0, barW, H);
+        } else {
+          const barH = Math.max(0, (H - W / targetRatio) / 2);
+          ctx.fillRect(0, 0, W, barH); ctx.fillRect(0, H - barH, W, barH);
+        }
+      }
+
+      // 4. Visual VFX, Animation Filters, Vignette & VN Mask
+      const animF = document.getElementById('animFilter').value;
+      const phase = (now * 0.0012) % 1;
+      if (animF === 'NEON_PULSE_WAVE') {
+        const ng = ctx.createLinearGradient(0, 0, W, H);
+        ng.addColorStop(0, `rgba(213,0,249,${(0.22 + 0.14 * Math.sin(now * 0.004)).toFixed(2)})`);
+        ng.addColorStop(1, `rgba(0,229,255,${(0.22 + 0.14 * Math.cos(now * 0.004)).toFixed(2)})`);
+        ctx.fillStyle = ng; ctx.fillRect(0, 0, W, H);
+      } else if (animF === 'GOLDEN_SPARKLE') {
+        for (let i = 0; i < 18; i++) {
+          const sx = (i * 197 + phase * 220) % W, sy = (i * 131 + Math.sin(now * 0.003 + i) * 60 + H) % H;
+          ctx.fillStyle = 'rgba(255,224,130,0.72)'; ctx.beginPath(); ctx.arc(sx, sy, 3.2, 0, Math.PI * 2); ctx.fill();
+        }
+      } else if (animF === 'LIGHT_LEAK_SWEEP') {
+        const lx = phase * (W + 300) - 150;
+        const lg = ctx.createLinearGradient(lx - 140, 0, lx + 140, H * 0.4);
+        lg.addColorStop(0, 'rgba(255,152,0,0)'); lg.addColorStop(0.5, 'rgba(255,183,77,0.38)'); lg.addColorStop(1, 'rgba(255,87,34,0)');
+        ctx.fillStyle = lg; ctx.fillRect(0, 0, W, H);
+      } else if (animF === 'VHS_RETRO_WAVE') {
+        ctx.fillStyle = 'rgba(0,255,180,0.09)';
+        for (let y = (Math.floor(now * 0.08) % 8); y < H; y += 8) ctx.fillRect(0, y, W, 2);
+      } else if (animF === 'PRISM_AURORA') {
+        const pg = ctx.createRadialGradient(W * (0.25 + 0.5 * phase), H * 0.3, 40, W * 0.5, H * 0.5, W * 0.65);
+        pg.addColorStop(0, 'rgba(0,229,255,0.28)'); pg.addColorStop(0.5, 'rgba(170,0,255,0.18)'); pg.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = pg; ctx.fillRect(0, 0, W, H);
+      } else if (animF === 'CYBER_MATRIX') {
+        ctx.fillStyle = 'rgba(0,255,110,0.28)';
+        for (let i = 0; i < 16; i++) ctx.fillRect(i * (W / 16) + 16, (phase * H + i * 95) % H, 3, 28);
+      } else if (animF === 'FIRE_EMBERS') {
+        for (let i = 0; i < 20; i++) {
+          ctx.fillStyle = i % 2 === 0 ? 'rgba(255,111,0,0.72)' : 'rgba(255,213,79,0.68)';
+          ctx.beginPath(); ctx.arc((i * 157 + Math.sin(now * 0.004 + i) * 35 + W) % W, H - ((phase * H + i * 83) % H), 3.2, 0, Math.PI * 2); ctx.fill();
+        }
+      } else if (animF === 'SNOW_FALL') {
+        ctx.fillStyle = 'rgba(255,255,255,0.76)';
+        for (let i = 0; i < 22; i++) { ctx.beginPath(); ctx.arc((i * 143 + Math.sin(now * 0.002 + i) * 28 + W) % W, (phase * H + i * 71) % H, 3.0, 0, Math.PI * 2); ctx.fill(); }
+      }
+
+      const vfx = document.getElementById('activeVfx').value;
+      if (vfx === 'SCANLINES') {
+        ctx.fillStyle = 'rgba(0,0,0,0.22)'; for (let y = 0; y < H; y += 5) ctx.fillRect(0, y, W, 2);
+      } else if (vfx === 'FLASH_STROBE' && Math.floor(now * 0.015) % 2 === 0) {
+        ctx.fillStyle = 'rgba(255,0,0,0.22)'; ctx.fillRect(0, 0, W, H);
+      } else if (vfx === 'EMERGENCY_SIREN') {
+        ctx.fillStyle = Math.sin(now * 0.012) > 0 ? 'rgba(255,23,68,0.22)' : 'rgba(41,121,255,0.22)'; ctx.fillRect(0, 0, W, H);
+      } else if (vfx === 'GLITCH' || (transType === 'GLITCH_TV' && transProg > 0.05)) {
+        ctx.fillStyle = 'rgba(0,229,255,0.22)'; ctx.fillRect(0, (now * 0.4) % H, W, 14);
+        ctx.fillStyle = 'rgba(255,0,85,0.22)'; ctx.fillRect(0, ((now * 0.4) + 32) % H, W, 7);
+      } else if (vfx === 'RAIN_STORM') {
+        ctx.strokeStyle = 'rgba(176,190,197,0.45)'; ctx.lineWidth = 2;
+        for (let i = 0; i < 36; i++) {
+          const rx = (i * 173 + phase * 180) % W, ry = (i * 97 + phase * 550) % H;
+          ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(rx - 7, ry + 24); ctx.stroke();
+        }
+      }
+
+      const vig = ((parseInt(document.getElementById('vnVignette').value, 10) || 0) / 100) + (vfx === 'VIGNETTE' ? 0.55 : 0);
+      if (vig > 0.02) {
+        const vg = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.25, W / 2, H / 2, Math.max(W, H) * 0.72);
+        vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, `rgba(0,0,0,${Math.min(0.85, vig * 0.85).toFixed(2)})`);
+        ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
+      }
+
+      const vmask = document.getElementById('vnMask').value;
+      if (vmask === 'RECTANGLE') {
+        ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H * 0.10); ctx.fillRect(0, H * 0.90, W, H * 0.10);
+      } else if (vmask === 'RADIAL') {
+        const rg = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.22, W / 2, H / 2, Math.min(W, H) * 0.58);
+        rg.addColorStop(0, 'rgba(0,0,0,0)'); rg.addColorStop(1, 'rgba(0,0,0,0.82)');
+        ctx.fillStyle = rg; ctx.fillRect(0, 0, W, H);
+      } else if (vmask === 'LINEAR' || vmask === 'MIRROR') {
+        const mg = ctx.createLinearGradient(0, 0, 0, H);
+        mg.addColorStop(0, 'rgba(0,0,0,0.8)'); mg.addColorStop(0.2, 'rgba(0,0,0,0)');
+        mg.addColorStop(0.8, 'rgba(0,0,0,0)'); mg.addColorStop(1, 'rgba(0,0,0,0.8)');
+        ctx.fillStyle = mg; ctx.fillRect(0, 0, W, H);
+      }
+
+      // VN Border Frame
+      const bw = parseInt(document.getElementById('borderWidth').value, 10);
+      if (bw > 0) {
+        ctx.strokeStyle = document.getElementById('vnBorderColor').value;
+        ctx.lineWidth = bw * 2;
+        ctx.strokeRect(0, 0, W, H);
+      }
+
+      // 5. Broadcast Overlays (Logo, LIVE, Location/Clock, Stickers, Headline, Reporter, Teleprompter, Subtitle, Ticker)
+      ctx.textAlign = 'left';
+      state.hitBoxes = {};
+
+      if (document.getElementById('showLogo').checked) {
+        const ls = parseFloat(document.getElementById('logoScale').value) || 1.0;
+        const lo = parseFloat(document.getElementById('logoOpacity').value) || 0.95;
+        const lp = document.getElementById('logoPosition').value;
+        const la = document.getElementById('logoAnim').value;
+        const baseLw = 230 * ls, baseLh = 68 * ls;
+        let bx = lp.includes('RIGHT') ? W - baseLw - 24 : 24;
+        let by = lp.includes('BOTTOM') ? H - baseLh - 70 : 24;
+        const lBox = { x: bx + state.offsets.logo.x, y: by + state.offsets.logo.y, w: baseLw, h: baseLh };
+        state.hitBoxes.logo = lBox;
+        ctx.save();
+        ctx.globalAlpha = lo;
+        const bobY = la === 'FLOAT_BOB' ? Math.sin(now * 0.004) * 5 : 0;
+        const lPulse = (la === 'PULSE_GLOW' || la === 'BOUNCE_POP') ? 1 + Math.sin(now * 0.007) * 0.04 : 1;
+        ctx.translate(lBox.x + lBox.w / 2, lBox.y + lBox.h / 2 + bobY);
+        if (la === 'SPIN_3D') ctx.scale(Math.cos(now * 0.003), 1);
+        else ctx.scale(lPulse, lPulse);
+        ctx.translate(-(lBox.x + lBox.w / 2), -(lBox.y + lBox.h / 2));
+
+        if (document.getElementById('logoType').value === 'CUSTOM_IMAGE' && customLogoImg) {
+          ctx.drawImage(customLogoImg, lBox.x, lBox.y, lBox.w, lBox.h);
+        } else {
+          drawRoundedRect(lBox.x, lBox.y, lBox.w, lBox.h, 12, 'rgba(9,13,22,0.92)', la === 'NEON_BORDER' ? '#00e5ff' : '#ffd54f');
+          ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.round(19 * ls)}px sans-serif`;
+          ctx.fillText(document.getElementById('channelName').value.slice(0, 20), lBox.x + 12, lBox.y + 28 * ls);
+          ctx.fillStyle = '#00e5ff'; ctx.font = `bold ${Math.round(11 * ls)}px sans-serif`;
+          ctx.fillText(document.getElementById('channelTagline').value.slice(0, 28), lBox.x + 12, lBox.y + 49 * ls);
+        }
+        ctx.restore();
+      }
+
+      const bs = parseFloat(document.getElementById('badgeScale').value) || 1.0;
+      if (document.getElementById('showLive').checked) {
+        const liveBox = { x: W - 144 * bs + state.offsets.live.x, y: 24 + state.offsets.live.y, w: 122 * bs, h: 40 * bs };
+        state.hitBoxes.live = liveBox;
+        const blink = Math.sin(now * 0.008) > 0;
+        drawRoundedRect(liveBox.x, liveBox.y, liveBox.w, liveBox.h, 8, '#c62828', '#ffd54f', 2);
+        ctx.fillStyle = blink ? '#fff' : '#ffd54f';
+        ctx.beginPath(); ctx.arc(liveBox.x + 18 * bs, liveBox.y + 20 * bs, 5 * bs, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#fff'; ctx.font = `900 ${Math.round(15 * bs)}px sans-serif`;
+        ctx.fillText((document.getElementById('liveBadgeText').value || 'LIVE TV').slice(0, 9), liveBox.x + 30 * bs, liveBox.y + 25 * bs);
+      }
+
+      if (document.getElementById('showMeta').checked || document.getElementById('showLocation').checked) {
+        const mBox = { x: W - 266 * bs + state.offsets.meta.x, y: 74 + state.offsets.meta.y, w: 244 * bs, h: 32 * bs };
+        state.hitBoxes.meta = mBox;
+        drawRoundedRect(mBox.x, mBox.y, mBox.w, mBox.h, 7, 'rgba(13,21,39,0.88)', null);
+        const manualClk = document.getElementById('manualClockText').value.trim();
+        const timeStr = manualClk || new Date().toLocaleTimeString('hi-IN', { hour: '2-digit', minute: '2-digit' });
+        const locPart = document.getElementById('showLocation').checked ? `📍 ${document.getElementById('location').value}` : '';
+        const clkPart = document.getElementById('showMeta').checked ? timeStr : '';
+        ctx.fillStyle = '#ffd54f'; ctx.font = `bold ${Math.round(13 * bs)}px sans-serif`;
+        ctx.fillText([locPart, clkPart].filter(Boolean).join(' | ').slice(0, 30), mBox.x + 10, mBox.y + 21 * bs);
+      }
+
+      if (document.getElementById('showStickers').checked && state.activeStickers.size > 0) {
+        const stLabels = STICKER_DEFS.filter(([k]) => state.activeStickers.has(k)).map(([, lbl]) => lbl);
+        const stBox = { x: 24 + state.offsets.stickers.x, y: 102 + state.offsets.stickers.y, w: Math.min(W - 48, stLabels.length * 124), h: 28 };
+        state.hitBoxes.stickers = stBox;
+        let sx = stBox.x;
+        stLabels.forEach(lbl => {
+          drawRoundedRect(sx, stBox.y, 118, 26, 6, 'rgba(198,40,40,0.92)', '#ffd54f', 1.5);
+          ctx.fillStyle = '#fff'; ctx.font = 'bold 11px sans-serif';
+          ctx.fillText(lbl, sx + 8, stBox.y + 17);
+          sx += 124;
+        });
+      }
+
+      if (document.getElementById('showHeadline').checked) {
+        const hs = parseFloat(document.getElementById('headlineScale').value) || 1.0;
+        const hp = document.getElementById('headlinePos').value;
+        const hAnim = document.getElementById('headlineAnim').value;
+        const hScale = (hAnim === 'PULSE_GLOW' || hAnim === 'ZOOM_POP') ? 1 + Math.sin(now * 0.006) * 0.02 : 1;
+        const boxH = 110 * hs;
+        const baseHy = hp === 'TOP' ? 116 : hp === 'CENTER' ? (H - boxH) / 2 : H - boxH - 72;
+        const hBox = { x: 24 + state.offsets.headline.x, y: baseHy + state.offsets.headline.y, w: W - 48, h: boxH };
+        state.hitBoxes.headline = hBox;
+
+        ctx.save();
+        ctx.translate(hBox.x + hBox.w / 2, hBox.y + hBox.h / 2);
+        ctx.scale(hScale, hScale);
+        ctx.translate(-(hBox.x + hBox.w / 2), -(hBox.y + hBox.h / 2));
+        const glowColor = (hAnim === 'NEON_FLASH' && Math.sin(now * 0.01) > 0) ? '#ef4444' : '#ffd54f';
+        drawRoundedRect(hBox.x, hBox.y, hBox.w, hBox.h, 10, 'rgba(12,18,34,0.94)', glowColor);
+        drawRoundedRect(hBox.x + 12, hBox.y - 14, 180, 26, 6, '#c62828', '#ffd54f', 2);
+        ctx.fillStyle = '#fff'; ctx.font = '900 13px sans-serif';
+        ctx.fillText(document.getElementById('category').value.slice(0, 22), hBox.x + 22, hBox.y + 3);
+        ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.round(24 * hs)}px sans-serif`;
+        ctx.fillText(document.getElementById('headline').value.slice(0, 58), hBox.x + 16, hBox.y + 44 * hs);
+        ctx.fillStyle = '#ffd54f'; ctx.font = `600 ${Math.round(16 * hs)}px sans-serif`;
+        ctx.fillText(document.getElementById('subHeadline').value.slice(0, 72), hBox.x + 16, hBox.y + 78 * hs);
+        ctx.fillStyle = '#94a3b8'; ctx.font = 'bold 11px sans-serif';
+        ctx.fillText(document.getElementById('helplineNumber').value, hBox.x + 16, hBox.y + hBox.h - 10);
+
+        if (hAnim === 'SHINE_SWEEP' || hAnim === 'SLIDE_REVEAL') {
+          const sx = hBox.x + ((now * 0.35) % (hBox.w + 180)) - 90;
+          const sg = ctx.createLinearGradient(sx, hBox.y, sx + 90, hBox.y);
+          sg.addColorStop(0, 'rgba(255,255,255,0)'); sg.addColorStop(0.5, 'rgba(255,255,255,0.22)'); sg.addColorStop(1, 'rgba(255,255,255,0)');
+          ctx.fillStyle = sg; ctx.fillRect(hBox.x, hBox.y, hBox.w, hBox.h);
+        }
+        ctx.restore();
+      }
+
+      if (document.getElementById('showReporter').checked) {
+        const rs = parseFloat(document.getElementById('reporterScale').value) || 1.0;
+        const rBox = { x: W - 280 * rs + state.offsets.reporter.x, y: H - 226 + state.offsets.reporter.y, w: 256 * rs, h: 42 * rs };
+        state.hitBoxes.reporter = rBox;
+        drawRoundedRect(rBox.x, rBox.y, rBox.w, rBox.h, 6, 'rgba(21,101,192,0.92)', '#ffd54f', 2);
+        ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.round(13 * rs)}px sans-serif`;
+        ctx.fillText('🎙️ ' + document.getElementById('reporterName').value, rBox.x + 10, rBox.y + 18 * rs);
+        ctx.fillStyle = '#ffd54f'; ctx.font = `600 ${Math.round(10 * rs)}px sans-serif`;
+        ctx.fillText(document.getElementById('reporterRole').value, rBox.x + 10, rBox.y + 34 * rs);
+      }
+
+      // On-Screen Teleprompter Scroll Box
+      if (document.getElementById('showTeleprompter').checked) {
+        const tpTxt = document.getElementById('teleprompterText').value.trim();
+        if (tpTxt) {
+          const tpW = Math.min(W - 80, 560), tpH = 120, tpX = (W - tpW) / 2, tpY = H * 0.22;
+          drawRoundedRect(tpX, tpY, tpW, tpH, 10, 'rgba(7,11,20,0.82)', '#00e5ff', 1.5);
+          ctx.save();
+          ctx.beginPath(); ctx.rect(tpX + 10, tpY + 8, tpW - 20, tpH - 16); ctx.clip();
+          const fs = parseInt(document.getElementById('tpFontSize').value, 10) || 18;
+          const tSpd = parseFloat(document.getElementById('tpSpeed').value) || 1.0;
+          ctx.fillStyle = '#fff'; ctx.font = `bold ${fs}px sans-serif`;
+          const words = tpTxt.split(' ');
+          let line = '', lines = [];
+          for (const w of words) {
+            if (ctx.measureText(line + w).width > tpW - 30) { lines.push(line); line = w + ' '; }
+            else line += w + ' ';
+          }
+          if (line) lines.push(line);
+          const scrollOffset = ((now * 0.025 * tSpd) % (lines.length * (fs + 8) + tpH)) - tpH * 0.7;
+          lines.forEach((ln, idx) => ctx.fillText(ln, tpX + 14, tpY + 26 + idx * (fs + 8) - scrollOffset));
+          ctx.restore();
+        }
+      }
+
+      // VN Subtitle with 4 styles
+      const sub = document.getElementById('vnSubtitle').value.trim();
+      if (sub) {
+        const sStyle = document.getElementById('vnSubtitleStyle').value;
+        ctx.font = 'bold 23px sans-serif';
+        const tw = Math.min(W - 80, ctx.measureText(sub).width + 32);
+        const bgC = sStyle === 'NEWS_BAR' ? 'rgba(183,28,28,0.92)' : sStyle === 'MINIMAL' ? 'rgba(0,0,0,0.35)' : 'rgba(0,0,0,0.80)';
+        const brdC = sStyle === 'MINIMAL' ? null : '#ffd54f';
+        const txtC = sStyle === 'YELLOW_BOLD' ? '#ffeb3b' : '#ffffff';
+        drawRoundedRect((W - tw) / 2, H - 256, tw, 38, 8, bgC, brdC, 2);
+        ctx.fillStyle = txtC; ctx.textAlign = 'center';
+        ctx.fillText(sub, W / 2, H - 230);
+        ctx.textAlign = 'left';
+      }
+
+      // Breaking News Ticker Bar
+      if (document.getElementById('showTicker').checked) {
+        const ts = parseFloat(document.getElementById('tickerScale').value) || 1.0;
+        const th = 52 * ts;
+        const baseTy = document.getElementById('tickerPos').value === 'TOP' ? 0 : H - th;
+        const tBox = { x: state.offsets.ticker.x, y: baseTy + state.offsets.ticker.y, w: W, h: th };
+        state.hitBoxes.ticker = tBox;
+        const tAnim = document.getElementById('tickerAnim').value;
+        const tBg = (tAnim === 'FLASH_TAG' || tAnim === 'WAVE_GLOW') && Math.sin(now * 0.01) > 0 ? '#b71c1c' : '#7f1d1d';
+        ctx.fillStyle = tBg; ctx.fillRect(tBox.x, tBox.y, tBox.w, tBox.h);
+        ctx.fillStyle = '#ffd54f'; ctx.fillRect(tBox.x, tBox.y, tBox.w, 3);
+
+        const text = document.getElementById('tickerText').value + '   ★   ' + document.getElementById('tickerText').value;
+        ctx.font = `bold ${Math.round(20 * ts)}px sans-serif`;
+        const tSpeed = parseFloat(document.getElementById('tickerSpeed').value) * 140;
+        tickerX -= tSpeed * dt;
+        const tw = ctx.measureText(text).width;
+        if (tickerX < -tw / 2) tickerX = tBox.w;
+        ctx.save();
+        ctx.beginPath(); ctx.rect(tBox.x + 175, tBox.y, tBox.w - 175, tBox.h); ctx.clip();
+        ctx.fillStyle = '#fff'; ctx.fillText(text, tickerX, tBox.y + 34 * ts);
+        ctx.restore();
+
+        ctx.fillStyle = '#ffd54f'; ctx.fillRect(tBox.x, tBox.y, 175, tBox.h);
+        ctx.fillStyle = '#7f1d1d'; ctx.font = '900 17px sans-serif';
+        ctx.fillText((document.getElementById('tickerTagText').value || '⚡ ताज़ा अपडेट').slice(0, 15), tBox.x + 12, tBox.y + 33 * ts);
+      }
+
+      // Render Completed + Active Handwriting Strokes
+      drawnStrokes.forEach(drawStroke);
+      if (currentDrawPts.length > 0) {
+        drawStroke({ pts: currentDrawPts, tool: document.getElementById('drawTool').value, color: document.getElementById('drawColor').value });
+      }
+
+      requestAnimationFrame(renderLoop);
+    }
+    requestAnimationFrame(renderLoop);
+
+    // Pure-JS SHA-256 for 100% offline file:// password lock verification
+    function pcSha256Hex(ascii) {
+      function rightRotate(v, a) { return (v >>> a) | (v << (32 - a)); }
+      const mathPow = Math.pow, maxWord = mathPow(2, 32);
+      let result = '', words = [], asciiBitLength = ascii.length * 8;
+      const hash = [], k = [];
+      let primeCounter = 0, isComposite = {};
+      for (let candidate = 2; primeCounter < 64; candidate++) {
+        if (!isComposite[candidate]) {
+          for (let i = 0; i < 313; i += candidate) isComposite[i] = candidate;
+          hash[primeCounter] = (mathPow(candidate, .5) * maxWord) | 0;
+          k[primeCounter++] = (mathPow(candidate, 1 / 3) * maxWord) | 0;
+        }
+      }
+      ascii += '\x80';
+      while (ascii.length % 64 - 56) ascii += '\x00';
+      for (let i = 0; i < ascii.length; i++) {
+        const j = ascii.charCodeAt(i);
+        if (j >> 8) return '';
+        words[i >> 2] |= j << ((3 - i) % 4) * 8;
+      }
+      words[words.length] = (asciiBitLength / maxWord) | 0;
+      words[words.length] = asciiBitLength;
+      for (let j = 0; j < words.length;) {
+        const w = words.slice(j, j += 16), oldHash = hash.slice(0);
+        for (let i = 0; i < 64; i++) {
+          const w15 = w[i - 15], w2 = w[i - 2];
+          const a = hash[0], e = hash[4];
+          const temp1 = hash[7] + (rightRotate(e, 6) ^ rightRotate(e, 11) ^ rightRotate(e, 25)) +
+            ((e & hash[5]) ^ ((~e) & hash[6])) + k[i] +
+            (w[i] = (i < 16) ? w[i] : (w[i - 16] + (rightRotate(w15, 7) ^ rightRotate(w15, 18) ^ (w15 >>> 3)) +
+              w[i - 7] + (rightRotate(w2, 17) ^ rightRotate(w2, 19) ^ (w2 >>> 10))) | 0);
+          const temp2 = (rightRotate(a, 2) ^ rightRotate(a, 13) ^ rightRotate(a, 22)) + ((a & hash[1]) ^ (a & hash[2]) ^ (hash[1] & hash[2]));
+          hash.unshift((temp1 + temp2) | 0);
+          hash[4] = (hash[4] + temp1) | 0;
+          hash.pop();
+        }
+        for (let i = 0; i < 8; i++) hash[i] = (hash[i] + oldHash[i]) | 0;
+      }
+      for (let i = 0; i < 8; i++) {
+        for (let j = 3; j + 1; j--) {
+          const b = (hash[i] >> (j * 8)) & 255;
+          result += ((b < 16) ? 0 : '') + b.toString(16);
+        }
+      }
+      return result;
+    }
+
+    const PC_EXPECTED_HASH = '84c390dad5edd0bb361f68747f3a1e5d2cddeb8dde209147b00d929c1a80b7c8';
+    const PC_UNLOCK_KEY = 'hk_news_pc_unlocked_v1';
+    const lockOverlay = document.getElementById('pcLockOverlay');
+    const pwdInput = document.getElementById('pcPasswordInput');
+    const lockErr = document.getElementById('pcLockErr');
+
+    if (localStorage.getItem(PC_UNLOCK_KEY) === '1') lockOverlay.style.display = 'none';
+    document.getElementById('btnTogglePcPwd').addEventListener('click', () => {
+      pwdInput.type = pwdInput.type === 'password' ? 'text' : 'password';
+    });
+    function attemptPcUnlock() {
+      if (pcSha256Hex((pwdInput.value || '').trim()) === PC_EXPECTED_HASH) {
+        localStorage.setItem(PC_UNLOCK_KEY, '1');
+        lockOverlay.style.display = 'none';
+        lockErr.style.display = 'none';
+        showToast('🔓 HK NEWS PC Studio सफलतापूर्वक अनलॉक हो गया!');
+      } else {
+        lockErr.style.display = 'block';
+      }
+    }
+    document.getElementById('btnUnlockPc').addEventListener('click', attemptPcUnlock);
+    pwdInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') attemptPcUnlock(); });
+    document.getElementById('btnLockPc').addEventListener('click', () => {
+      localStorage.removeItem(PC_UNLOCK_KEY);
+      pwdInput.value = ''; lockErr.style.display = 'none'; lockOverlay.style.display = 'flex';
+    });
+  </script>
+</body>
+</html>

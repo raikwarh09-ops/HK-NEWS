@@ -2,6 +2,7 @@ package com.example.viewmodel
 
 import android.app.Application
 import android.content.Context
+import android.media.MediaMetadataRetriever
 import android.media.MediaRecorder
 import android.net.Uri
 import android.os.Build
@@ -11,11 +12,15 @@ import androidx.lifecycle.viewModelScope
 import com.example.audio.NewsAudioEffects
 import com.example.ui.components.NewsAnimationTheme
 import com.example.util.GalleryMediaSaver
+import com.example.util.NewsVideoCompositor
 import com.example.data.db.AppDatabase
 import com.example.data.model.HindiHeadlineTemplate
 import com.example.data.model.HindiTeleprompterPreset
 import com.example.data.model.NewsProject
 import com.example.data.repository.NewsRepository
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -24,6 +29,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 enum class BackgroundSource {
     VIRTUAL_STUDIO,
@@ -32,6 +38,11 @@ enum class BackgroundSource {
 }
 
 class NewsStudioViewModel(application: Application) : AndroidViewModel(application) {
+
+    companion object {
+        const val MAX_VIDEO_DURATION_MS = 7_200_000L // 2 hours
+        const val MAX_RECORDING_SECONDS = 7200 // 2 hours
+    }
 
     private val repository: NewsRepository
 
@@ -151,9 +162,23 @@ class NewsStudioViewModel(application: Application) : AndroidViewModel(applicati
 
     private var voiceRecorder: MediaRecorder? = null
     private var voiceOutputFile: File? = null
+    private var gallerySaveJob: Job? = null
+
+    private val _splitPointRatio = MutableStateFlow<Float?>(null)
+    val splitPointRatio: StateFlow<Float?> = _splitPointRatio.asStateFlow()
+
+    private val _seekRequestEvent = MutableStateFlow<Pair<Long, Long>?>(null)
+    val seekRequestEvent: StateFlow<Pair<Long, Long>?> = _seekRequestEvent.asStateFlow()
 
     private val _isTimelineExpanded = MutableStateFlow(false)
     val isTimelineExpanded: StateFlow<Boolean> = _isTimelineExpanded.asStateFlow()
+
+    // ================= VN VIDEO EDITOR SUITE STATE =================
+    private val _isVnPanelOpen = MutableStateFlow(true)
+    val isVnPanelOpen: StateFlow<Boolean> = _isVnPanelOpen.asStateFlow()
+
+    private val _vnActiveToolTab = MutableStateFlow(0)
+    val vnActiveToolTab: StateFlow<Int> = _vnActiveToolTab.asStateFlow()
 
     private val undoStack = mutableListOf<NewsProject>()
     private val redoStack = mutableListOf<NewsProject>()
@@ -162,39 +187,72 @@ class NewsStudioViewModel(application: Application) : AndroidViewModel(applicati
         viewModelScope.launch {
             while (true) {
                 delay(100)
-                if (_isVideoPlaying.value) {
+                val isGalleryVideo = _backgroundSource.value == BackgroundSource.GALLERY_MEDIA && _customMediaUri.value != null
+                if (_isVideoPlaying.value && !_currentProject.value.vnFreezeFrameActive && !isGalleryVideo) {
                     _timelinePositionMs.update { current ->
                         val speed = _currentProject.value.videoSpeed
+                        val dur = _timelineDurationMs.value.coerceAtLeast(1000L)
+                        val trimStartMs = (dur * _currentProject.value.videoTrimStart).toLong()
+                        val trimEndMs = (dur * _currentProject.value.videoTrimEnd).toLong().coerceAtLeast(trimStartMs + 200L)
                         val next = current + (100 * speed).toLong()
-                        if (next >= _timelineDurationMs.value) 0L else next
+                        if (next >= trimEndMs || next < trimStartMs) trimStartMs else next
                     }
                 }
             }
         }
     }
 
+    fun syncPlaybackFromPlayer(positionMs: Long, durationMs: Long) {
+        if (durationMs > 0L && kotlin.math.abs(_timelineDurationMs.value - durationMs) > 200L) {
+            val clampedDur = durationMs.coerceIn(1000L, MAX_VIDEO_DURATION_MS)
+            _timelineDurationMs.value = clampedDur
+            _currentProject.update { it.copy(videoTotalDurationMs = clampedDur) }
+        }
+        val maxDur = _timelineDurationMs.value.coerceAtLeast(1000L)
+        _timelinePositionMs.value = positionMs.coerceIn(0L, maxDur)
+    }
+
     fun seekTimelineTo(posMs: Long) {
-        _timelinePositionMs.value = posMs.coerceIn(0L, _timelineDurationMs.value)
+        val clamped = posMs.coerceIn(0L, _timelineDurationMs.value.coerceAtLeast(1000L))
+        _timelinePositionMs.value = clamped
+        _seekRequestEvent.value = System.nanoTime() to clamped
     }
 
     fun trimTimelineLeft() {
-        val curRatio = (_timelinePositionMs.value.toFloat() / _timelineDurationMs.value).coerceIn(0f, 0.9f)
+        val dur = _timelineDurationMs.value.coerceAtLeast(1000L)
+        val maxAllowed = (_currentProject.value.videoTrimEnd - 0.03f).coerceIn(0f, 0.96f)
+        val curRatio = (_timelinePositionMs.value.toFloat() / dur).coerceIn(0f, maxAllowed)
         pushUndoState()
         _currentProject.update { it.copy(videoTrimStart = curRatio) }
         _userMessage.value = "✂️ बाईं तरफ से क्लिप ट्रिम की गई (Start: ${(curRatio * 100).toInt()}%)"
     }
 
     fun trimTimelineRight() {
-        val curRatio = (_timelinePositionMs.value.toFloat() / _timelineDurationMs.value).coerceIn(0.1f, 1f)
+        val dur = _timelineDurationMs.value.coerceAtLeast(1000L)
+        val minAllowed = (_currentProject.value.videoTrimStart + 0.03f).coerceIn(0.04f, 1f)
+        val curRatio = (_timelinePositionMs.value.toFloat() / dur).coerceIn(minAllowed, 1f)
         pushUndoState()
         _currentProject.update { it.copy(videoTrimEnd = curRatio) }
         _userMessage.value = "✂️ दाईं तरफ से क्लिप ट्रिम की गई (End: ${(curRatio * 100).toInt()}%)"
     }
 
     fun splitTimelineAtPlayhead() {
+        val dur = _timelineDurationMs.value.coerceAtLeast(1000L)
+        val minSplit = (_currentProject.value.videoTrimStart + 0.04f).coerceIn(0.05f, 0.90f)
+        val maxSplit = (_currentProject.value.videoTrimEnd - 0.04f).coerceIn(minSplit + 0.01f, 0.95f)
+        val curRatio = (_timelinePositionMs.value.toFloat() / dur).coerceIn(minSplit, maxSplit)
         pushUndoState()
-        _userMessage.value = "✂️ प्लेहेड पर क्लिप 2 टुकड़ों में विभाजित (Split) हुई!"
+        _splitPointRatio.value = curRatio
+        if (_currentProject.value.activeTransition == "NONE") {
+            _currentProject.update { it.copy(activeTransition = "3D_NEWS_FLIP") }
+        }
+        _userMessage.value = "✂️ क्लिप ${(curRatio * 100).toInt()}% पर 2 हिस्सों में स्प्लिट व कट-ट्रांज़िशन सेट हुई!"
         NewsAudioEffects.playBreakingAlert()
+    }
+
+    fun clearSplitPoint() {
+        _splitPointRatio.value = null
+        _userMessage.value = "✂️ स्प्लिट कट मार्क हटाया गया"
     }
 
     fun updateChromaKey(enabled: Boolean, color: String, similarity: Float) {
@@ -211,8 +269,19 @@ class NewsStudioViewModel(application: Application) : AndroidViewModel(applicati
 
     fun updateVoiceChanger(effect: String) {
         pushUndoState()
-        _currentProject.update { it.copy(voiceChangerEffect = effect) }
-        _userMessage.value = "🎙️ वॉइस चेंजर इफ़ेक्ट लागू: $effect"
+        val suggestedPitch = NewsAudioEffects.resolveDefaultPitch(effect)
+        _currentProject.update {
+            it.copy(
+                voiceChangerEffect = effect,
+                audioPitch = suggestedPitch
+            )
+        }
+        _userMessage.value = "🎙️ वॉइस इफ़ेक्ट लागू: $effect (${(suggestedPitch * 100).toInt()}% पिच)"
+    }
+
+    fun updateVoicePitch(pitch: Float) {
+        val clamped = pitch.coerceIn(0.5f, 1.8f)
+        _currentProject.update { it.copy(audioPitch = clamped) }
     }
 
     fun updateTransition(transition: String) {
@@ -260,6 +329,205 @@ class NewsStudioViewModel(application: Application) : AndroidViewModel(applicati
 
     fun toggleTimelineExpanded() {
         _isTimelineExpanded.value = !_isTimelineExpanded.value
+    }
+
+    // ================= VN VIDEO EDITOR ACTIONS =================
+    fun openVnToolTab(tabIndex: Int) {
+        _vnActiveToolTab.value = tabIndex
+        _isVnPanelOpen.value = true
+    }
+
+    fun closeVnPanel() {
+        _isVnPanelOpen.value = false
+    }
+
+    fun updateVnSpeedCurve(curve: String) {
+        pushUndoState()
+        _currentProject.update { it.copy(vnSpeedCurve = curve) }
+        _userMessage.value = if (curve == "NONE") "⚡ VN कर्व स्पीड रीसेट (Normal)" else "⚡ VN स्पीड कर्व लागू: $curve"
+    }
+
+    fun rotateVnVideo90() {
+        pushUndoState()
+        _currentProject.update {
+            val next = (it.vnRotationDegrees + 90f) % 360f
+            it.copy(vnRotationDegrees = next)
+        }
+        _userMessage.value = "🔄 वीडियो रोटेट: ${_currentProject.value.vnRotationDegrees.toInt()}°"
+    }
+
+    fun toggleVnMirrorHorizontal() {
+        pushUndoState()
+        _currentProject.update { it.copy(vnMirrorHorizontal = !it.vnMirrorHorizontal) }
+        _userMessage.value = if (_currentProject.value.vnMirrorHorizontal) "🪞 हॉरिज़ॉन्टल मिरर फ्लिप चालू" else "मिरर फ्लिप बंद"
+    }
+
+    fun toggleVnFlipVertical() {
+        pushUndoState()
+        _currentProject.update { it.copy(vnFlipVertical = !it.vnFlipVertical) }
+        _userMessage.value = if (_currentProject.value.vnFlipVertical) "↕️ वर्टिकल फ्लिप चालू" else "वर्टिकल फ्लिप बंद"
+    }
+
+    fun updateVnBackgroundAndBorder(
+        bgStyle: String? = null,
+        borderWidthDp: Float? = null,
+        borderColorHex: String? = null
+    ) {
+        _currentProject.update {
+            it.copy(
+                vnBackgroundStyle = bgStyle ?: it.vnBackgroundStyle,
+                vnBorderWidthDp = borderWidthDp?.coerceIn(0f, 16f) ?: it.vnBorderWidthDp,
+                vnBorderColorHex = borderColorHex ?: it.vnBorderColorHex
+            )
+        }
+    }
+
+    fun updateVnAdjustments(
+        saturation: Float? = null,
+        warmth: Float? = null,
+        vignette: Float? = null,
+        sharpen: Float? = null
+    ) {
+        _currentProject.update {
+            it.copy(
+                vnSaturation = saturation?.coerceIn(0f, 2f) ?: it.vnSaturation,
+                vnWarmth = warmth?.coerceIn(-0.5f, 0.5f) ?: it.vnWarmth,
+                vnVignette = vignette?.coerceIn(0f, 1f) ?: it.vnVignette,
+                vnSharpen = sharpen?.coerceIn(0f, 1f) ?: it.vnSharpen
+            )
+        }
+    }
+
+    fun updateVnMotionFx(fx: String) {
+        pushUndoState()
+        _currentProject.update { it.copy(vnMotionFx = fx) }
+        _userMessage.value = if (fx == "NONE") "VN मोशन FX बंद" else "🎞️ VN मोशन FX सक्रिय: $fx"
+    }
+
+    fun updateVnMaskAndOpacity(maskType: String? = null, opacity: Float? = null) {
+        _currentProject.update {
+            it.copy(
+                vnMaskType = maskType ?: it.vnMaskType,
+                vnVideoOpacity = opacity?.coerceIn(0.2f, 1.0f) ?: it.vnVideoOpacity
+            )
+        }
+    }
+
+    fun toggleVnFreezeFrame() {
+        pushUndoState()
+        val next = !_currentProject.value.vnFreezeFrameActive
+        _currentProject.update { it.copy(vnFreezeFrameActive = next) }
+        _isVideoPlaying.value = !next
+        _userMessage.value = if (next) "🧊 फ़्रीज़ फ़्रेम (Freeze Frame) सक्रिय!" else "▶ फ़्रीज़ फ़्रेम हटाया गया"
+    }
+
+    fun toggleVnReversePlayback() {
+        pushUndoState()
+        val next = !_currentProject.value.vnReversePlayback
+        _currentProject.update { it.copy(vnReversePlayback = next) }
+        _userMessage.value = if (next) "⏪ रिवर्स वीडियो मोड चालू (Reverse)" else "⏩ सामान्य प्लेबैक मोड"
+    }
+
+    fun updateVnSubtitleAndBeat(
+        subtitleText: String? = null,
+        subtitleStyle: String? = null,
+        beatMarkersEnabled: Boolean? = null
+    ) {
+        _currentProject.update {
+            it.copy(
+                vnSubtitleText = subtitleText ?: it.vnSubtitleText,
+                vnSubtitleStyle = subtitleStyle ?: it.vnSubtitleStyle,
+                vnBeatMarkersEnabled = beatMarkersEnabled ?: it.vnBeatMarkersEnabled
+            )
+        }
+    }
+
+    fun updateAnimationFilter(animFilter: String) {
+        pushUndoState()
+        _currentProject.update { it.copy(activeAnimationFilter = animFilter) }
+        _userMessage.value = if (animFilter == "NONE") {
+            "✨ एनिमेशन फ़िल्टर बंद"
+        } else {
+            "✨ एनिमेशन फ़िल्टर लागू: $animFilter"
+        }
+    }
+
+    fun updateVideoCrop(
+        preset: String? = null,
+        zoom: Float? = null,
+        panX: Float? = null,
+        panY: Float? = null,
+        left: Float? = null,
+        top: Float? = null,
+        right: Float? = null,
+        bottom: Float? = null
+    ) {
+        _currentProject.update { current ->
+            val nextPreset = preset ?: current.videoCropPreset
+            current.copy(
+                videoCropPreset = nextPreset,
+                videoCropZoom = (zoom ?: current.videoCropZoom).coerceIn(1.0f, 3.0f),
+                videoCropPanX = (panX ?: current.videoCropPanX).coerceIn(-1.0f, 1.0f),
+                videoCropPanY = (panY ?: current.videoCropPanY).coerceIn(-1.0f, 1.0f),
+                videoCropLeft = (left ?: current.videoCropLeft).coerceIn(0.0f, 0.4f),
+                videoCropTop = (top ?: current.videoCropTop).coerceIn(0.0f, 0.4f),
+                videoCropRight = (right ?: current.videoCropRight).coerceIn(0.0f, 0.4f),
+                videoCropBottom = (bottom ?: current.videoCropBottom).coerceIn(0.0f, 0.4f)
+            )
+        }
+    }
+
+    fun resetVideoCrop() {
+        pushUndoState()
+        _currentProject.update {
+            it.copy(
+                videoCropPreset = "FULL",
+                videoCropZoom = 1.0f,
+                videoCropPanX = 0.0f,
+                videoCropPanY = 0.0f,
+                videoCropLeft = 0.0f,
+                videoCropTop = 0.0f,
+                videoCropRight = 0.0f,
+                videoCropBottom = 0.0f
+            )
+        }
+        _userMessage.value = "✂️ वीडियो क्रॉप रीसेट हो गया (Full Frame)"
+    }
+
+    fun resetVnTools() {
+        pushUndoState()
+        _splitPointRatio.value = null
+        _currentProject.update {
+            it.copy(
+                vnSpeedCurve = "NONE",
+                vnRotationDegrees = 0f,
+                vnMirrorHorizontal = false,
+                vnFlipVertical = false,
+                vnBackgroundStyle = "BLACK",
+                vnBorderWidthDp = 0f,
+                vnSaturation = 1.0f,
+                vnWarmth = 0.0f,
+                vnVignette = 0.0f,
+                vnSharpen = 0.0f,
+                vnMotionFx = "NONE",
+                vnMaskType = "NONE",
+                vnVideoOpacity = 1.0f,
+                vnFreezeFrameActive = false,
+                vnReversePlayback = false,
+                vnSubtitleText = "",
+                vnBeatMarkersEnabled = false,
+                activeAnimationFilter = "NONE",
+                videoCropPreset = "FULL",
+                videoCropZoom = 1.0f,
+                videoCropPanX = 0.0f,
+                videoCropPanY = 0.0f,
+                videoCropLeft = 0.0f,
+                videoCropTop = 0.0f,
+                videoCropRight = 0.0f,
+                videoCropBottom = 0.0f
+            )
+        }
+        _userMessage.value = "🔄 सभी VN वीडियो एडिटर टूल्स रीसेट हो गए!"
     }
 
     fun toggleVoiceRecording(context: Context) {
@@ -486,12 +754,48 @@ class NewsStudioViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun setVideoPlaying(playing: Boolean) {
+        if (playing && _currentProject.value.vnFreezeFrameActive) {
+            _currentProject.update { it.copy(vnFreezeFrameActive = false) }
+        }
         _isVideoPlaying.value = playing
     }
 
     fun toggleVideoPlayback() {
+        if (!_isVideoPlaying.value && _currentProject.value.vnFreezeFrameActive) {
+            _currentProject.update { it.copy(vnFreezeFrameActive = false) }
+        }
         _isVideoPlaying.value = !_isVideoPlaying.value
         _userMessage.value = if (_isVideoPlaying.value) "वीडियो प्ले हो रहा है ▶" else "वीडियो रोका गया ⏸"
+    }
+
+    fun setTargetVideoDurationMs(durationMs: Long) {
+        val clamped = durationMs.coerceIn(5000L, MAX_VIDEO_DURATION_MS)
+        _timelineDurationMs.value = clamped
+        _timelinePositionMs.value = 0L
+        _currentProject.update { it.copy(videoTotalDurationMs = clamped) }
+        val totalSec = clamped / 1000L
+        val hrs = totalSec / 3600L
+        val mins = (totalSec % 3600L) / 60L
+        val secs = totalSec % 60L
+        val label = if (hrs > 0L) "%02d:%02d:%02d".format(hrs, mins, secs) else "%02d:%02d".format(mins, secs)
+        _userMessage.value = "⏱️ वीडियो अवधि सेट की गई: $label (अधिकतम 2 घंटे तक)"
+    }
+
+    private suspend fun extractVideoDurationMs(uri: Uri): Long? = withContext(Dispatchers.IO) {
+        var retriever: MediaMetadataRetriever? = null
+        try {
+            retriever = MediaMetadataRetriever()
+            if (uri.scheme == "file" && !uri.path.isNullOrBlank()) {
+                retriever.setDataSource(uri.path)
+            } else {
+                retriever.setDataSource(getApplication<Application>(), uri)
+            }
+            retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
+        } catch (_: Exception) {
+            null
+        } finally {
+            try { retriever?.release() } catch (_: Exception) {}
+        }
     }
 
     fun setVideoUri(uri: Uri?) {
@@ -500,62 +804,127 @@ class NewsStudioViewModel(application: Application) : AndroidViewModel(applicati
             _backgroundSource.value = BackgroundSource.GALLERY_MEDIA
             _currentProject.update { it.copy(mediaUri = uri.toString()) }
             _isVideoPlaying.value = true
-            _userMessage.value = "वीडियो सफलतापूर्वक जोड़ा गया और प्ले हो रहा है!"
+            viewModelScope.launch {
+                val detectedMs = extractVideoDurationMs(uri)
+                if (detectedMs != null && detectedMs > 0L) {
+                    val clamped = detectedMs.coerceIn(2000L, MAX_VIDEO_DURATION_MS)
+                    _timelineDurationMs.value = clamped
+                    _currentProject.update { it.copy(videoTotalDurationMs = clamped) }
+                }
+            }
+            _userMessage.value = "वीडियो/मीडिया सफलतापूर्वक जोड़ा गया (2 घंटे तक सपोर्ट)!"
         }
     }
 
+    fun cancelGallerySave() {
+        gallerySaveJob?.cancel()
+        gallerySaveJob = null
+        _exportProgress.value = null
+        _isSavingToGallery.value = false
+        _userMessage.value = "⏹️ वीडियो एक्सपोर्ट रोका गया।"
+    }
+
     fun saveToGallery(context: Context, asVideo: Boolean = true, instantDirectSave: Boolean = false) {
-        viewModelScope.launch {
+        if (_isSavingToGallery.value) return
+        gallerySaveJob = viewModelScope.launch {
             _isSavingToGallery.value = true
             _exportProgress.value = 0.05f
             NewsAudioEffects.playTickerBeep()
 
-            val customUri = _customMediaUri.value
-            val isVideo = customUri != null && (
-                customUri.toString().contains("video", ignoreCase = true) ||
-                customUri.toString().endsWith(".mp4", ignoreCase = true) ||
-                (context.contentResolver.getType(customUri)?.startsWith("video") == true)
-            )
-
             var resultUri: Uri? = null
-            if (instantDirectSave && isVideo && customUri != null) {
-                _userMessage.value = "⚡ सुपर फ़ास्ट सेव हो रही है..."
-                _exportProgress.value = 0.5f
-                resultUri = GalleryMediaSaver.saveVideoToGallery(
-                    context = context,
-                    sourceUri = customUri,
-                    projectTitle = _currentProject.value.headline
+            var wasCancelled = false
+            try {
+                val customUri = _customMediaUri.value
+                val mime = customUri?.let {
+                    try { context.contentResolver.getType(it) } catch (_: Exception) { null }
+                }
+                val isImage = customUri != null && (
+                    mime?.startsWith("image") == true ||
+                    customUri.toString().endsWith(".jpg", ignoreCase = true) ||
+                    customUri.toString().endsWith(".jpeg", ignoreCase = true) ||
+                    customUri.toString().endsWith(".png", ignoreCase = true) ||
+                    customUri.toString().endsWith(".webp", ignoreCase = true)
                 )
-                _exportProgress.value = 1.0f
-            } else if (asVideo) {
-                _userMessage.value = "⚡ फ्रेम सहित वीडियो तैयार हो रही है (2-3 सेकंड)..."
-                resultUri = com.example.util.NewsVideoCompositor.compositeAndSaveVideo(
-                    context = context,
-                    project = _currentProject.value,
-                    sourceVideoUri = if (isVideo) customUri else null,
-                    onProgress = { prog ->
-                        _exportProgress.value = prog
+                val isVideo = customUri != null && !isImage && (
+                    mime?.startsWith("video") == true ||
+                    customUri.toString().contains("video", ignoreCase = true) ||
+                    customUri.toString().endsWith(".mp4", ignoreCase = true) ||
+                    customUri.scheme == "file"
+                )
+
+                if (asVideo) {
+                    val effectiveProject = if (instantDirectSave) {
+                        _currentProject.value.copy(exportFastMode = true)
+                    } else {
+                        _currentProject.value
                     }
-                )
-            } else {
-                _exportProgress.value = 0.7f
-                resultUri = GalleryMediaSaver.saveNewsFrameToGallery(
-                    context = context,
-                    project = _currentProject.value
-                )
+                    _userMessage.value = if (instantDirectSave) {
+                        "⚡ फ़ास्ट एडिटेड वीडियो सीधे गैलरी के लिए तैयार हो रही है..."
+                    } else {
+                        "⚡ न्यूज़ फ्रेम व एडिटिंग सहित वीडियो तैयार हो रही है..."
+                    }
+                    resultUri = com.example.util.NewsVideoCompositor.compositeAndSaveVideo(
+                        context = context,
+                        project = effectiveProject,
+                        sourceVideoUri = if (isVideo) customUri else null,
+                        sourceImageUri = if (isImage) customUri else null,
+                        splitPointRatio = _splitPointRatio.value,
+                        onProgress = { prog ->
+                            _exportProgress.value = prog
+                        }
+                    )
+                } else {
+                    _exportProgress.value = 0.7f
+                    resultUri = GalleryMediaSaver.saveNewsFrameToGallery(
+                        context = context,
+                        project = _currentProject.value
+                    )
+                }
+
+                _exportProgress.value = 1.0f
+                saveCurrentProject()
+            } catch (_: CancellationException) {
+                wasCancelled = true
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                delay(200)
+                _exportProgress.value = null
+                _isSavingToGallery.value = false
+                gallerySaveJob = null
             }
 
-            _exportProgress.value = 1.0f
-            saveCurrentProject()
-            delay(200)
-            _exportProgress.value = null
-            _isSavingToGallery.value = false
+            if (wasCancelled) return@launch
 
             if (resultUri != null) {
                 _savedGalleryUri.value = resultUri
-                _userMessage.value = if (asVideo) "🎉 वीडियो सफलतापूर्वक गैलरी में सेव हो गई!" else "एचडी न्यूज़ पोस्टर गैलरी में सेव हो गया!"
+                _userMessage.value = if (asVideo) {
+                    "🎉 एडिटेड वीडियो सीधे फ़ोन गैलरी (Movies/HkNewsStudio) में सेव हो गई!"
+                } else {
+                    "एचडी न्यूज़ पोस्टर गैलरी में सेव हो गया!"
+                }
             } else {
-                _userMessage.value = "सहेजा गया: प्रोजेक्ट सुरक्षित है।"
+                _userMessage.value = if (asVideo) {
+                    "⚠️ वीडियो गैलरी में सेव नहीं हो सकी। कृपया स्टोरेज अनुमति जांचें या दोबारा प्रयास करें।"
+                } else {
+                    "⚠️ पोस्टर गैलरी में सेव नहीं हो सका।"
+                }
+            }
+        }
+    }
+
+    fun applyElementDragDelta(element: String, dx: Float, dy: Float) {
+        _currentProject.update { current ->
+            when (element) {
+                "LOGO" -> current.copy(logoOffsetX = current.logoOffsetX + dx, logoOffsetY = current.logoOffsetY + dy)
+                "HEADLINE" -> current.copy(headlineOffsetX = current.headlineOffsetX + dx, headlineOffsetY = current.headlineOffsetY + dy)
+                "TICKER" -> current.copy(tickerOffsetX = current.tickerOffsetX + dx, tickerOffsetY = current.tickerOffsetY + dy)
+                "REPORTER" -> current.copy(reporterOffsetX = current.reporterOffsetX + dx, reporterOffsetY = current.reporterOffsetY + dy)
+                "LIVE_BADGE" -> current.copy(liveBadgeOffsetX = current.liveBadgeOffsetX + dx, liveBadgeOffsetY = current.liveBadgeOffsetY + dy)
+                "LOCATION" -> current.copy(locationOffsetX = current.locationOffsetX + dx, locationOffsetY = current.locationOffsetY + dy)
+                "CLOCK" -> current.copy(clockOffsetX = current.clockOffsetX + dx, clockOffsetY = current.clockOffsetY + dy)
+                "STICKERS" -> current.copy(stickersOffsetX = current.stickersOffsetX + dx, stickersOffsetY = current.stickersOffsetY + dy)
+                else -> current
             }
         }
     }
@@ -933,6 +1302,17 @@ class NewsStudioViewModel(application: Application) : AndroidViewModel(applicati
         if (uri != null) {
             _backgroundSource.value = BackgroundSource.GALLERY_MEDIA
             _currentProject.update { it.copy(mediaUri = uri.toString()) }
+            _timelinePositionMs.value = 0L
+            _isVideoPlaying.value = true
+            viewModelScope.launch {
+                val detectedMs = extractVideoDurationMs(uri)
+                if (detectedMs != null && detectedMs > 0L) {
+                    val clamped = detectedMs.coerceIn(2000L, MAX_VIDEO_DURATION_MS)
+                    _timelineDurationMs.value = clamped
+                    _currentProject.update { it.copy(videoTotalDurationMs = clamped) }
+                }
+            }
+            _userMessage.value = "वीडियो/मीडिया सफलतापूर्वक जोड़ा गया!"
         }
     }
 
@@ -977,6 +1357,11 @@ class NewsStudioViewModel(application: Application) : AndroidViewModel(applicati
     fun toggleRecording(context: Context? = null) {
         if (_isRecording.value) {
             _isRecording.value = false
+            val recordedMs = (_recordingSeconds.value * 1000L).coerceIn(5000L, MAX_VIDEO_DURATION_MS)
+            if (_backgroundSource.value != BackgroundSource.CAMERA && _recordingSeconds.value >= 5) {
+                _timelineDurationMs.value = recordedMs
+                _currentProject.update { it.copy(videoTotalDurationMs = recordedMs) }
+            }
             _userMessage.value = "रिकॉर्डिंग समाप्त! फ्रेम सहित वीडियो प्रोसेस हो रही है..."
             if (context != null && _backgroundSource.value != BackgroundSource.CAMERA) {
                 saveToGallery(context, asVideo = true)
@@ -986,11 +1371,15 @@ class NewsStudioViewModel(application: Application) : AndroidViewModel(applicati
             _recordingSeconds.value = 0
             NewsAudioEffects.playCountdownBeep(true)
             viewModelScope.launch {
-                while (_isRecording.value) {
+                while (_isRecording.value && _recordingSeconds.value < MAX_RECORDING_SECONDS) {
                     delay(1000)
                     if (_isRecording.value) {
                         _recordingSeconds.value += 1
                     }
+                }
+                if (_isRecording.value && _recordingSeconds.value >= MAX_RECORDING_SECONDS) {
+                    _isRecording.value = false
+                    _userMessage.value = "⏱️ अधिकतम 2 घंटे की रिकॉर्डिंग पूरी हुई!"
                 }
             }
         }
@@ -998,8 +1387,16 @@ class NewsStudioViewModel(application: Application) : AndroidViewModel(applicati
 
     fun onLiveCameraRecordingFinished(context: Context, capturedUri: Uri) {
         _customMediaUri.value = capturedUri
-        _userMessage.value = "लाइव कैमरा वीडियो रिकॉर्ड हो गई! फ्रेम सहित गैलरी में सेव हो रही है..."
-        saveToGallery(context, asVideo = true)
+        viewModelScope.launch {
+            val detectedMs = extractVideoDurationMs(capturedUri)
+            if (detectedMs != null && detectedMs > 0L) {
+                val clamped = detectedMs.coerceIn(2000L, MAX_VIDEO_DURATION_MS)
+                _timelineDurationMs.value = clamped
+                _currentProject.update { it.copy(videoTotalDurationMs = clamped) }
+            }
+            _userMessage.value = "लाइव कैमरा वीडियो रिकॉर्ड हो गई! फ्रेम सहित गैलरी में सेव हो रही है..."
+            saveToGallery(context, asVideo = true)
+        }
     }
 
     fun saveCurrentProject() {
@@ -1015,6 +1412,8 @@ class NewsStudioViewModel(application: Application) : AndroidViewModel(applicati
 
     fun loadProject(project: NewsProject) {
         _currentProject.value = project
+        _timelineDurationMs.value = project.videoTotalDurationMs.coerceIn(5000L, MAX_VIDEO_DURATION_MS)
+        _timelinePositionMs.value = 0L
         _userMessage.value = "प्रोजेक्ट लोड किया गया: ${project.headline.take(20)}..."
     }
 
@@ -1025,17 +1424,17 @@ class NewsStudioViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    fun exportProject() {
+    fun exportProject(context: Context? = null) {
+        if (context != null) {
+            saveToGallery(context, asVideo = true)
+            return
+        }
         viewModelScope.launch {
-            _exportProgress.value = 0.05f
+            _exportProgress.value = 0.1f
             NewsAudioEffects.playTickerBeep()
-            for (step in 1..10) {
-                delay(180)
-                _exportProgress.value = step * 0.1f
-            }
             saveCurrentProject()
             _exportProgress.value = null
-            _userMessage.value = "H.K NEWS वीडियो फ्रेम सफलतापूर्वक एक्सपोर्ट हुआ!"
+            _userMessage.value = "प्रोजेक्ट सुरक्षित सेव हुआ! वीडियो के लिए 'फ़ास्ट वीडियो सेव' दबाएँ।"
         }
     }
 

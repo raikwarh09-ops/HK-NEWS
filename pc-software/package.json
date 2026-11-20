@@ -1,0 +1,14 @@
+{
+  "name": "hk-news-pc-studio",
+  "version": "1.0.0",
+  "description": "HK NEWS PC Studio Pro - Hindi News Video Editor & Broadcast Software for Windows, macOS & Linux",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build-win": "electron-builder --win"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
+  }
+}

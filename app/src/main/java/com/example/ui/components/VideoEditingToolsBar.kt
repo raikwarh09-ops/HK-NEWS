@@ -76,6 +76,9 @@ fun VideoEditingToolsBar(
     onUpdateLayoutMode: (mode: String) -> Unit,
     onToggleSticker: (stickerTag: String) -> Unit,
     onPickSecondaryMedia: (Uri?) -> Unit,
+    onUpdateAnimationFilter: (String) -> Unit = {},
+    onUpdateVideoCrop: (preset: String?, zoom: Float?, panX: Float?, panY: Float?, left: Float?, top: Float?, right: Float?, bottom: Float?) -> Unit = { _, _, _, _, _, _, _, _ -> },
+    onResetVideoCrop: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var selectedToolTab by remember { mutableIntStateOf(0) }
@@ -84,6 +87,8 @@ fun VideoEditingToolsBar(
         "कंट्रास्ट (Contrast)",
         "फ़िल्टर्स (Filters)",
         "इफ़ेक्ट्स (VFX)",
+        "✨ एनिमेशन फ़िल्टर",
+        "✂️ वीडियो क्रॉप",
         "स्पीड व कट (Trim)",
         "स्टिकर्स (Stickers)",
         "लेआउट (PIP)"
@@ -589,8 +594,129 @@ fun VideoEditingToolsBar(
                     }
                 }
 
-                // TAB 4: SPEED & TRIM
+                // TAB 4: ANIMATION FILTERS
                 4 -> {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = "एनिमेशन वीडियो फ़िल्टर (Animated Filters)",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp
+                        )
+                        val animFilters = listOf(
+                            "NONE" to "बंद (None)",
+                            "NEON_PULSE_WAVE" to "⚡ नियॉन पल्स वेव",
+                            "GOLDEN_SPARKLE" to "✨ गोल्डन स्पार्कल",
+                            "LIGHT_LEAK_SWEEP" to "🌅 लाइट लीक स्वीप",
+                            "VHS_RETRO_WAVE" to "📼 VHS रेट्रो वेव",
+                            "PRISM_AURORA" to "🌈 प्रिज्म ऑरोरा ग्लो",
+                            "CYBER_MATRIX" to "💚 साइबर मैट्रिक्स",
+                            "FIRE_EMBERS" to "🔥 फ़ायर एम्बर्स",
+                            "SNOW_FALL" to "❄️ स्नो फॉल"
+                        )
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            animFilters.forEach { (id, name) ->
+                                val selected = project.activeAnimationFilter == id
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(if (selected) NewsGold else Color(0xFF0F172A))
+                                        .border(0.5.dp, if (selected) NewsAmber else Color(0x33FFFFFF), RoundedCornerShape(6.dp))
+                                        .clickable { onUpdateAnimationFilter(id) }
+                                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                                ) {
+                                    Text(
+                                        text = name,
+                                        color = if (selected) Color.Black else Color.LightGray,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // TAB 5: VIDEO CROP TOOLS
+                5 -> {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "वीडियो क्रॉप टूल्स (Crop Ratio, Zoom & Edges)",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp
+                            )
+                            OutlinedButton(
+                                onClick = onResetVideoCrop,
+                                modifier = Modifier.height(30.dp)
+                            ) {
+                                Text("🔄 रीसेट", fontSize = 10.sp, color = NewsGold)
+                            }
+                        }
+                        val presets = listOf(
+                            "FULL" to "Full",
+                            "16:9" to "16:9",
+                            "9:16" to "9:16",
+                            "1:1" to "1:1",
+                            "4:5" to "4:5",
+                            "4:3" to "4:3",
+                            "21:9" to "21:9"
+                        )
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            presets.forEach { (id, label) ->
+                                val sel = project.videoCropPreset == id
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(if (sel) NewsRedPrimary else Color(0xFF0F172A))
+                                        .clickable { onUpdateVideoCrop(id, null, null, null, null, null, null, null) }
+                                        .padding(horizontal = 9.dp, vertical = 6.dp)
+                                ) {
+                                    Text(label, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                        Text("क्रॉप ज़ूम: ${(project.videoCropZoom * 100).roundToInt()}%", color = NewsAmber, fontSize = 11.sp)
+                        Slider(
+                            value = project.videoCropZoom,
+                            onValueChange = { onUpdateVideoCrop(null, it, null, null, null, null, null, null) },
+                            valueRange = 1.0f..3.0f,
+                            colors = SliderDefaults.colors(thumbColor = NewsGold, activeTrackColor = NewsRedPrimary)
+                        )
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("बायां/दायां पैन: ${(project.videoCropPanX * 100).roundToInt()}%", color = Color.LightGray, fontSize = 10.sp)
+                                Slider(
+                                    value = project.videoCropPanX,
+                                    onValueChange = { onUpdateVideoCrop(null, null, it, null, null, null, null, null) },
+                                    valueRange = -1.0f..1.0f
+                                )
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("ऊपर/नीचे पैन: ${(project.videoCropPanY * 100).roundToInt()}%", color = Color.LightGray, fontSize = 10.sp)
+                                Slider(
+                                    value = project.videoCropPanY,
+                                    onValueChange = { onUpdateVideoCrop(null, null, null, it, null, null, null, null) },
+                                    valueRange = -1.0f..1.0f
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // TAB 6: SPEED & TRIM
+                6 -> {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(
                             text = "वीडियो गति नियंत्रण (Speed Control)",
@@ -655,8 +781,8 @@ fun VideoEditingToolsBar(
                     }
                 }
 
-                // TAB 5: STICKERS & BADGES
-                5 -> {
+                // TAB 7: STICKERS & BADGES
+                7 -> {
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(
                             text = "ऑन-स्क्रीन ब्रॉडकास्ट बैज व स्टिकर्स",
@@ -707,8 +833,8 @@ fun VideoEditingToolsBar(
                     }
                 }
 
-                // TAB 6: LAYOUT (SPLIT SCREEN / PIP)
-                6 -> {
+                // TAB 8: LAYOUT (SPLIT SCREEN / PIP)
+                8 -> {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(
                             text = "स्क्रीन लेआउट मोड (Anchor + Ground Reporter)",

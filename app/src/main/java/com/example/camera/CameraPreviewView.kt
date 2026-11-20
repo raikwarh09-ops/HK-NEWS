@@ -103,6 +103,44 @@ fun CameraPreviewView(
         }
     }
 
+    var previewViewRef by remember { mutableStateOf<PreviewView?>(null) }
+
+    LaunchedEffect(isFrontCamera, previewViewRef) {
+        val view = previewViewRef ?: return@LaunchedEffect
+        val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
+        cameraProviderFuture.addListener({
+            try {
+                val cameraProvider = cameraProviderFuture.get()
+
+                val preview = Preview.Builder().build().also {
+                    it.surfaceProvider = view.surfaceProvider
+                }
+
+                val recorder = Recorder.Builder()
+                    .setQualitySelector(QualitySelector.from(Quality.HD))
+                    .build()
+                val vCapture = VideoCapture.withOutput(recorder)
+                videoCapture = vCapture
+
+                val cameraSelector = if (isFrontCamera) {
+                    CameraSelector.DEFAULT_FRONT_CAMERA
+                } else {
+                    CameraSelector.DEFAULT_BACK_CAMERA
+                }
+
+                cameraProvider.unbindAll()
+                camera = cameraProvider.bindToLifecycle(
+                    lifecycleOwner,
+                    cameraSelector,
+                    preview,
+                    vCapture
+                )
+            } catch (e: Exception) {
+                onError("Camera initialization error: ${e.localizedMessage}")
+            }
+        }, ContextCompat.getMainExecutor(context))
+    }
+
     Box(modifier = modifier.fillMaxSize().background(Color.Black)) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
@@ -114,41 +152,8 @@ fun CameraPreviewView(
                     )
                     scaleType = PreviewView.ScaleType.FILL_CENTER
                     implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+                    previewViewRef = this
                 }
-            },
-            update = { view ->
-                val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
-                cameraProviderFuture.addListener({
-                    try {
-                        val cameraProvider = cameraProviderFuture.get()
-
-                        val preview = Preview.Builder().build().also {
-                            it.surfaceProvider = view.surfaceProvider
-                        }
-
-                        val recorder = Recorder.Builder()
-                            .setQualitySelector(QualitySelector.from(Quality.HD))
-                            .build()
-                        val vCapture = VideoCapture.withOutput(recorder)
-                        videoCapture = vCapture
-
-                        val cameraSelector = if (isFrontCamera) {
-                            CameraSelector.DEFAULT_FRONT_CAMERA
-                        } else {
-                            CameraSelector.DEFAULT_BACK_CAMERA
-                        }
-
-                        cameraProvider.unbindAll()
-                        camera = cameraProvider.bindToLifecycle(
-                            lifecycleOwner,
-                            cameraSelector,
-                            preview,
-                            vCapture
-                        )
-                    } catch (e: Exception) {
-                        onError("Camera initialization error: ${e.localizedMessage}")
-                    }
-                }, ContextCompat.getMainExecutor(context))
             }
         )
     }

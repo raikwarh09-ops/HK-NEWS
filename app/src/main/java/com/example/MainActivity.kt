@@ -1,10 +1,16 @@
 package com.example
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -13,16 +19,22 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Campaign
+import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tv
@@ -32,6 +44,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailItem
+import androidx.compose.material3.NavigationRailItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -47,21 +62,29 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.ui.screens.AppPasswordLockScreen
 import com.example.ui.screens.ChannelSettingsScreen
+import com.example.ui.screens.PcSoftwareScreen
 import com.example.ui.screens.SavedProjectsScreen
 import com.example.ui.screens.StudioScreen
 import com.example.ui.screens.TemplatesScreen
+import com.example.util.AppLockManager
+import kotlinx.coroutines.launch
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.theme.NewsAmber
 import com.example.ui.theme.NewsDeepNavy
@@ -76,7 +99,22 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             MyApplicationTheme {
-                NewsStudioApp()
+                val context = LocalContext.current
+                var isAppUnlocked by remember {
+                    mutableStateOf(AppLockManager.isAppUnlocked(context))
+                }
+                if (!isAppUnlocked) {
+                    AppPasswordLockScreen(
+                        onUnlocked = { isAppUnlocked = true }
+                    )
+                } else {
+                    NewsStudioApp(
+                        onLockApp = {
+                            AppLockManager.lockNow(context)
+                            isAppUnlocked = false
+                        }
+                    )
+                }
             }
         }
     }
@@ -85,11 +123,14 @@ class MainActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NewsStudioApp(
-    viewModel: NewsStudioViewModel = viewModel()
+    viewModel: NewsStudioViewModel = viewModel(),
+    onLockApp: () -> Unit = {}
 ) {
     var selectedScreenIndex by remember { mutableIntStateOf(0) }
+    var isDesktopLayoutForced by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     val userMessage by viewModel.userMessage.collectAsState()
+    val uiScope = rememberCoroutineScope()
 
     LaunchedEffect(userMessage) {
         userMessage?.let {
@@ -106,12 +147,14 @@ fun NewsStudioApp(
     }
 
     val currentProject by viewModel.currentProject.collectAsState()
-
     val context = LocalContext.current
 
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val useDesktopRail = maxWidth >= 840.dp || isDesktopLayoutForced
+
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = {
@@ -170,6 +213,14 @@ fun NewsStudioApp(
                     }
                 },
                 actions = {
+                    val topBarStorageLauncher = rememberLauncherForActivityResult(
+                        contract = ActivityResultContracts.RequestPermission()
+                    ) { granted ->
+                        if (granted) {
+                            viewModel.saveToGallery(context, asVideo = true)
+                        }
+                    }
+
                     if (selectedScreenIndex == 0) {
                         Row(
                             modifier = Modifier
@@ -182,7 +233,13 @@ fun NewsStudioApp(
                                 )
                                 .border(1.dp, NewsGold.copy(alpha = 0.8f), RoundedCornerShape(8.dp))
                                 .clickable {
-                                    viewModel.saveToGallery(context, asVideo = true)
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ||
+                                        ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+                                    ) {
+                                        viewModel.saveToGallery(context, asVideo = true)
+                                    } else {
+                                        topBarStorageLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                                    }
                                 }
                                 .padding(horizontal = 10.dp, vertical = 6.dp)
                                 .testTag("top_kinemaster_export"),
@@ -210,142 +267,264 @@ fun NewsStudioApp(
             )
         },
         bottomBar = {
-            NavigationBar(
-                containerColor = Color(0xFF0F172A),
-                contentColor = Color.White,
-                modifier = Modifier.testTag("bottom_nav_bar")
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF090D16))
             ) {
-                // Tab 0: Studio
-                NavigationBarItem(
-                    selected = selectedScreenIndex == 0,
-                    onClick = { selectedScreenIndex = 0 },
-                    icon = {
-                        Icon(
-                            imageVector = Icons.Default.Videocam,
-                            contentDescription = "स्टूडियो"
+                if (!useDesktopRail) {
+                    NavigationBar(
+                        containerColor = Color(0xFF0F172A),
+                        contentColor = Color.White,
+                        windowInsets = WindowInsets(0, 0, 0, 0),
+                        modifier = Modifier.testTag("bottom_nav_bar")
+                    ) {
+                        NavigationBarItem(
+                            selected = selectedScreenIndex == 0,
+                            onClick = { selectedScreenIndex = 0 },
+                            icon = { Icon(Icons.Default.Videocam, contentDescription = "स्टूडियो") },
+                            label = {
+                                Text(
+                                    text = "स्टूडियो",
+                                    fontSize = 10.sp,
+                                    fontWeight = if (selectedScreenIndex == 0) FontWeight.Bold else FontWeight.Normal
+                                )
+                            },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = Color.White,
+                                selectedTextColor = NewsGold,
+                                indicatorColor = NewsRedPrimary,
+                                unselectedIconColor = Color.Gray,
+                                unselectedTextColor = Color.Gray
+                            ),
+                            modifier = Modifier.testTag("nav_studio")
                         )
-                    },
-                    label = {
-                        Text(
-                            text = "स्टूडियो",
-                            fontSize = 11.sp,
-                            fontWeight = if (selectedScreenIndex == 0) FontWeight.Bold else FontWeight.Normal
-                        )
-                    },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = Color.White,
-                        selectedTextColor = NewsGold,
-                        indicatorColor = NewsRedPrimary,
-                        unselectedIconColor = Color.Gray,
-                        unselectedTextColor = Color.Gray
-                    ),
-                    modifier = Modifier.testTag("nav_studio")
-                )
 
-                // Tab 1: Templates
-                NavigationBarItem(
-                    selected = selectedScreenIndex == 1,
-                    onClick = { selectedScreenIndex = 1 },
-                    icon = {
-                        Icon(
-                            imageVector = Icons.Default.Campaign,
-                            contentDescription = "टेम्पलेट्स"
+                        NavigationBarItem(
+                            selected = selectedScreenIndex == 1,
+                            onClick = { selectedScreenIndex = 1 },
+                            icon = { Icon(Icons.Default.Campaign, contentDescription = "टेम्पलेट्स") },
+                            label = {
+                                Text(
+                                    text = "टेम्पलेट्स",
+                                    fontSize = 10.sp,
+                                    fontWeight = if (selectedScreenIndex == 1) FontWeight.Bold else FontWeight.Normal
+                                )
+                            },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = Color.White,
+                                selectedTextColor = NewsGold,
+                                indicatorColor = NewsRedPrimary,
+                                unselectedIconColor = Color.Gray,
+                                unselectedTextColor = Color.Gray
+                            ),
+                            modifier = Modifier.testTag("nav_templates")
                         )
-                    },
-                    label = {
-                        Text(
-                            text = "टेम्पलेट्स",
-                            fontSize = 11.sp,
-                            fontWeight = if (selectedScreenIndex == 1) FontWeight.Bold else FontWeight.Normal
-                        )
-                    },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = Color.White,
-                        selectedTextColor = NewsGold,
-                        indicatorColor = NewsRedPrimary,
-                        unselectedIconColor = Color.Gray,
-                        unselectedTextColor = Color.Gray
-                    ),
-                    modifier = Modifier.testTag("nav_templates")
-                )
 
-                // Tab 2: Saved Projects
-                NavigationBarItem(
-                    selected = selectedScreenIndex == 2,
-                    onClick = { selectedScreenIndex = 2 },
-                    icon = {
-                        Icon(
-                            imageVector = Icons.Default.FolderOpen,
-                            contentDescription = "सहेजे गए"
+                        NavigationBarItem(
+                            selected = selectedScreenIndex == 2,
+                            onClick = { selectedScreenIndex = 2 },
+                            icon = { Icon(Icons.Default.FolderOpen, contentDescription = "सहेजे गए") },
+                            label = {
+                                Text(
+                                    text = "प्रोजेक्ट्स",
+                                    fontSize = 10.sp,
+                                    fontWeight = if (selectedScreenIndex == 2) FontWeight.Bold else FontWeight.Normal
+                                )
+                            },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = Color.White,
+                                selectedTextColor = NewsGold,
+                                indicatorColor = NewsRedPrimary,
+                                unselectedIconColor = Color.Gray,
+                                unselectedTextColor = Color.Gray
+                            ),
+                            modifier = Modifier.testTag("nav_saved_projects")
                         )
-                    },
-                    label = {
-                        Text(
-                            text = "प्रोजेक्ट्स",
-                            fontSize = 11.sp,
-                            fontWeight = if (selectedScreenIndex == 2) FontWeight.Bold else FontWeight.Normal
-                        )
-                    },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = Color.White,
-                        selectedTextColor = NewsGold,
-                        indicatorColor = NewsRedPrimary,
-                        unselectedIconColor = Color.Gray,
-                        unselectedTextColor = Color.Gray
-                    ),
-                    modifier = Modifier.testTag("nav_saved_projects")
-                )
 
-                // Tab 3: Channel Profile & Settings
-                NavigationBarItem(
-                    selected = selectedScreenIndex == 3,
-                    onClick = { selectedScreenIndex = 3 },
-                    icon = {
-                        Icon(
-                            imageVector = Icons.Default.Settings,
-                            contentDescription = "सेटिंग्स"
+                        NavigationBarItem(
+                            selected = selectedScreenIndex == 3,
+                            onClick = { selectedScreenIndex = 3 },
+                            icon = { Icon(Icons.Default.Settings, contentDescription = "सेटिंग्स") },
+                            label = {
+                                Text(
+                                    text = "सेटिंग्स",
+                                    fontSize = 10.sp,
+                                    fontWeight = if (selectedScreenIndex == 3) FontWeight.Bold else FontWeight.Normal
+                                )
+                            },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = Color.White,
+                                selectedTextColor = NewsGold,
+                                indicatorColor = NewsRedPrimary,
+                                unselectedIconColor = Color.Gray,
+                                unselectedTextColor = Color.Gray
+                            ),
+                            modifier = Modifier.testTag("nav_settings")
                         )
-                    },
-                    label = {
-                        Text(
-                            text = "सेटिंग्स",
-                            fontSize = 11.sp,
-                            fontWeight = if (selectedScreenIndex == 3) FontWeight.Bold else FontWeight.Normal
+
+                        NavigationBarItem(
+                            selected = selectedScreenIndex == 4,
+                            onClick = { selectedScreenIndex = 4 },
+                            icon = { Icon(Icons.Default.Computer, contentDescription = "PC सॉफ्टवेयर") },
+                            label = {
+                                Text(
+                                    text = "PC ऐप",
+                                    fontSize = 10.sp,
+                                    fontWeight = if (selectedScreenIndex == 4) FontWeight.Bold else FontWeight.Normal
+                                )
+                            },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = Color.White,
+                                selectedTextColor = NewsGold,
+                                indicatorColor = NewsRedPrimary,
+                                unselectedIconColor = Color.Gray,
+                                unselectedTextColor = Color.Gray
+                            ),
+                            modifier = Modifier.testTag("nav_pc_software")
                         )
-                    },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = Color.White,
-                        selectedTextColor = NewsGold,
-                        indicatorColor = NewsRedPrimary,
-                        unselectedIconColor = Color.Gray,
-                        unselectedTextColor = Color.Gray
-                    ),
-                    modifier = Modifier.testTag("nav_settings")
-                )
+                    }
+                }
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFF060A13))
+                        .windowInsetsPadding(WindowInsets.navigationBars)
+                        .padding(horizontal = 12.dp, vertical = 4.dp)
+                        .testTag("powered_by_footer"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = stringResource(R.string.powered_by_raikwar_ji),
+                        color = NewsGold,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp,
+                        textAlign = TextAlign.Center
+                    )
+                }
             }
         }
     ) { innerPadding ->
-        Box(
+        Row(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
                 .background(NewsDeepNavy)
         ) {
-            when (selectedScreenIndex) {
-                0 -> StudioScreen(viewModel = viewModel)
-                1 -> TemplatesScreen(
-                    viewModel = viewModel,
-                    onNavigateToStudio = { selectedScreenIndex = 0 }
-                )
-                2 -> SavedProjectsScreen(
-                    viewModel = viewModel,
-                    onOpenProjectInStudio = { selectedScreenIndex = 0 }
-                )
-                3 -> ChannelSettingsScreen(
-                    viewModel = viewModel,
-                    onNavigateBack = { selectedScreenIndex = 0 }
-                )
+            if (useDesktopRail) {
+                NavigationRail(
+                    containerColor = Color(0xFF0F172A),
+                    contentColor = Color.White,
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .testTag("desktop_nav_rail")
+                ) {
+                    NavigationRailItem(
+                        selected = selectedScreenIndex == 0,
+                        onClick = { selectedScreenIndex = 0 },
+                        icon = { Icon(Icons.Default.Videocam, contentDescription = "स्टूडियो") },
+                        label = { Text("स्टूडियो", fontSize = 10.sp) },
+                        colors = NavigationRailItemDefaults.colors(
+                            selectedIconColor = Color.White,
+                            selectedTextColor = NewsGold,
+                            indicatorColor = NewsRedPrimary,
+                            unselectedIconColor = Color.Gray,
+                            unselectedTextColor = Color.Gray
+                        ),
+                        modifier = Modifier.testTag("rail_studio")
+                    )
+                    NavigationRailItem(
+                        selected = selectedScreenIndex == 1,
+                        onClick = { selectedScreenIndex = 1 },
+                        icon = { Icon(Icons.Default.Campaign, contentDescription = "टेम्पलेट्स") },
+                        label = { Text("टेम्पलेट्स", fontSize = 10.sp) },
+                        colors = NavigationRailItemDefaults.colors(
+                            selectedIconColor = Color.White,
+                            selectedTextColor = NewsGold,
+                            indicatorColor = NewsRedPrimary,
+                            unselectedIconColor = Color.Gray,
+                            unselectedTextColor = Color.Gray
+                        ),
+                        modifier = Modifier.testTag("rail_templates")
+                    )
+                    NavigationRailItem(
+                        selected = selectedScreenIndex == 2,
+                        onClick = { selectedScreenIndex = 2 },
+                        icon = { Icon(Icons.Default.FolderOpen, contentDescription = "प्रोजेक्ट्स") },
+                        label = { Text("प्रोजेक्ट्स", fontSize = 10.sp) },
+                        colors = NavigationRailItemDefaults.colors(
+                            selectedIconColor = Color.White,
+                            selectedTextColor = NewsGold,
+                            indicatorColor = NewsRedPrimary,
+                            unselectedIconColor = Color.Gray,
+                            unselectedTextColor = Color.Gray
+                        ),
+                        modifier = Modifier.testTag("rail_projects")
+                    )
+                    NavigationRailItem(
+                        selected = selectedScreenIndex == 3,
+                        onClick = { selectedScreenIndex = 3 },
+                        icon = { Icon(Icons.Default.Settings, contentDescription = "सेटिंग्स") },
+                        label = { Text("सेटिंग्स", fontSize = 10.sp) },
+                        colors = NavigationRailItemDefaults.colors(
+                            selectedIconColor = Color.White,
+                            selectedTextColor = NewsGold,
+                            indicatorColor = NewsRedPrimary,
+                            unselectedIconColor = Color.Gray,
+                            unselectedTextColor = Color.Gray
+                        ),
+                        modifier = Modifier.testTag("rail_settings")
+                    )
+                    NavigationRailItem(
+                        selected = selectedScreenIndex == 4,
+                        onClick = { selectedScreenIndex = 4 },
+                        icon = { Icon(Icons.Default.Computer, contentDescription = "PC सॉफ्टवेयर") },
+                        label = { Text("PC ऐप", fontSize = 10.sp) },
+                        colors = NavigationRailItemDefaults.colors(
+                            selectedIconColor = Color.White,
+                            selectedTextColor = NewsGold,
+                            indicatorColor = NewsRedPrimary,
+                            unselectedIconColor = Color.Gray,
+                            unselectedTextColor = Color.Gray
+                        ),
+                        modifier = Modifier.testTag("rail_pc_software")
+                    )
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .background(NewsDeepNavy)
+            ) {
+                when (selectedScreenIndex) {
+                    0 -> StudioScreen(viewModel = viewModel)
+                    1 -> TemplatesScreen(
+                        viewModel = viewModel,
+                        onNavigateToStudio = { selectedScreenIndex = 0 }
+                    )
+                    2 -> SavedProjectsScreen(
+                        viewModel = viewModel,
+                        onOpenProjectInStudio = { selectedScreenIndex = 0 }
+                    )
+                    3 -> ChannelSettingsScreen(
+                        viewModel = viewModel,
+                        onNavigateBack = { selectedScreenIndex = 0 },
+                        onLockApp = onLockApp
+                    )
+                    4 -> PcSoftwareScreen(
+                        isDesktopLayoutForced = isDesktopLayoutForced,
+                        onToggleDesktopLayout = { isDesktopLayoutForced = it },
+                        onStatusMessage = { msg ->
+                            uiScope.launch { snackbarHostState.showSnackbar(msg) }
+                        }
+                    )
+                }
             }
         }
+    }
     }
 }

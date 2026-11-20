@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ColorLens
 import androidx.compose.material.icons.filled.LocationCity
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.Button
@@ -29,8 +30,11 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -43,6 +47,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -52,6 +57,7 @@ import com.example.ui.theme.NewsAmber
 import com.example.ui.theme.NewsDeepNavy
 import com.example.ui.theme.NewsGold
 import com.example.ui.theme.NewsRedPrimary
+import com.example.util.AppLockManager
 import com.example.viewmodel.NewsStudioViewModel
 
 data class NewsColorPreset(
@@ -63,8 +69,11 @@ data class NewsColorPreset(
 fun ChannelSettingsScreen(
     viewModel: NewsStudioViewModel,
     onNavigateBack: () -> Unit,
+    onLockApp: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    var requireEachLaunch by remember { mutableStateOf(AppLockManager.isRequireEachLaunch(context)) }
     val currentProject by viewModel.currentProject.collectAsState()
 
     var channelName by remember { mutableStateOf(currentProject.channelName) }
@@ -380,6 +389,93 @@ fun ChannelSettingsScreen(
                         ),
                         singleLine = true
                     )
+                }
+            }
+        }
+
+        // Security Lock Card
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF162035))
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Lock,
+                            contentDescription = null,
+                            tint = NewsGold,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Text(
+                            text = "सुरक्षा एवं पासवर्ड लॉक (App Lock)",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "हर बार खुलने पर पासवर्ड मांगें",
+                                color = Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = "चालू रखने पर हर बार ऐप खोलते समय पासवर्ड डालना होगा",
+                                color = Color(0xFF94A3B8),
+                                fontSize = 11.sp
+                            )
+                        }
+                        Switch(
+                            checked = requireEachLaunch,
+                            onCheckedChange = { enabled ->
+                                requireEachLaunch = enabled
+                                AppLockManager.setRequireEachLaunch(context, enabled)
+                            },
+                            modifier = Modifier.testTag("switch_require_password_each_launch"),
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = NewsGold,
+                                checkedTrackColor = NewsRedPrimary
+                            )
+                        )
+                    }
+
+                    OutlinedButton(
+                        onClick = onLockApp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                            .testTag("btn_lock_app_now"),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Lock,
+                            contentDescription = "अभी लॉक करें",
+                            tint = NewsGold,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "🔒 अभी ऐप लॉक करें",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
+                    }
                 }
             }
         }
